@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block title %}Modifier un évènement{% endblock %}
+
+{% block main_content %}
+    <div style="text-align: center">
+        <h2>Modifier un évènement</h2>
+        <br>
+        <form method="post">
+            {% csrf_token %}
+            <div style="text-align: -moz-center">
+                <table>
+                    {% for field in form %}
+                        {% if field.label == "User" %}
+                            <tr style="display: none;">
+                                <td>{{ field.label }}</td>
+                                <td>{{ field }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td>{{ field.label }}</td>
+                                <td>{{ field }}</td>
+                            </tr>
+                        {% endif %}
+                        {% for error_message in field.errors %}
+                            <h3>{{ error_message }}</h3>
+                        {% endfor %}
+                    {% endfor %}
+                </table>
+            </div>
+            <br>
+            <input type="submit" value="Modifier" style="color: white" class="btn btn-success btn-warning">
+        </form>
+    </div>
+
+{% endblock %}
+

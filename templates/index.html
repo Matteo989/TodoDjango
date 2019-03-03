@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% block title %}Accueil{% endblock %}
+
+{% block main_content %}
+    <br>
+    <div style="text-align: center">
+        <h3>Bienvenue sur TodoList.</h3>
+        <br>
+        <div style="text-align: justify; width: 60%; display: inline-block">
+            <p>Développée dans le cadre d'un projet Django/Python à l'IUT d'Aix-Marseille durant le cursus de ma Licence
+                Professionnelle Développement Web, cette application se veut simple est épurée.<br>
+                Vous y trouverez un formulaire d'insciption, de connexion, mais aussi toutes les fonctionnalités
+                d'ajout, de modification et de suppression d'évènement. De plus, une fonction de rappel est en cours de
+                développement et permettra de recevoir un e-mail quelques jours avant la date de l'évènement (à définir
+                lors de la création de celui-ci).</p>
+            <hr>
+
+            {% if user.is_authenticated %}
+                <div style="text-align: center">
+                    <p>Sans plus tarder, cliquez ici pour créer votre premier évènement :</p>
+                    <a href="{% url 'add_event' %}" class="btn btn-success">Ajouter un évènement</a>
+                </div>
+                <hr>
+
+                <div style="text-align: center">
+                    <p>Si ce n'est pas votre première connexion, vous pourrez trouver tous vos évènements en cliquant
+                        sur le
+                        bouton ci dessous.</p>
+                    <a href="{% url 'calendar' %}" class="btn btn-primary">Mon tableau d'évènements</a>
+                </div>
+                <hr>
+                <div style="text-align: center">
+                    <h4>Bonne visite !!</h4>
+                </div>
+            {% else %}
+                <div style="text-align: center">
+                    <p>Veuillez tout d'abord vous connecter ou vous enregistrer :</p>
+                    <a href="{% url 'login' %}" class="btn btn-primary">Se connecter</a>
+                    <a href="{% url 'register' %}" class="btn btn-success">S'enregistrer</a>
+                </div>
+                <hr>
+            {% endif %}
+        </div>
+    </div>
+
+
+{% endblock %}

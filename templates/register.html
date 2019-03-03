@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+
+{% block title %}Inscription{% endblock %}
+
+{% block main_content %}
+    <div style="text-align: center">
+        <h2>Inscription</h2>
+        <br>
+        <form method="post">
+            {% csrf_token %}
+            <div style="text-align: -moz-center">
+                <table>
+                    {% for field in form %}
+                        <tr>
+                            <td>{{ field.label }}</td>
+                            <td>{{ field }}</td>
+                        </tr>
+                        {% for error_message in field.errors %}
+                            <h3>{{ error_message }}</h3>
+                        {% endfor %}
+                    {% endfor %}
+                </table>
+            </div>
+            <br>
+            <input type="submit" value="Inscription" class="btn btn-success">
+        </form>
+    </div>
+{% endblock %}

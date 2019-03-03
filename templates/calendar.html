@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% load i18n %}    <!-- Permet le trans -->
+{% block title %}Calendrier{% endblock %}
+
+{% block main_content %}
+    <h1>Calendrier</h1>
+
+    <a href="{% url 'add_event' %}" style="position: absolute; right: 0; margin-top: -30px; margin-right: 30px;">
+        <button style="color: white; border: none" type="button" class="btn-sm btn-success"><i
+                class="fas fa-plus"></i> Ajouter
+        </button>
+    </a>
+
+    <div>
+        {% if object_list %}
+            <table data-toggle="table"
+                   data-search="true"
+                   data-filter-control="true"
+                   data-show-export="true"
+                   data-click-to-select="true"
+                   data-toolbar="#toolbar"
+                   class="table" id="table_event">
+                <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Titre</th>
+                    <th>Description</th>
+                    <th>Lieu</th>
+                    <th>Rappel</th>
+                    <th style="width: 120px;">Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for object in object_list %}
+                    <tr>
+                        <td>{{ object.date|date:"d/m/Y" }}</td>
+                        <td>{{ object.titre }}</td>
+                        <td>{{ object.description }}</td>
+                        <td>{{ object.lieu }}</td>
+                        <td>{{ object.rappel|date:"d/m/Y" }}</td>
+                        <td>
+                            <a href="{% url 'edit_event' object.id %}">
+                                <button style="color: white; border: none" type="button" class="btn-sm btn-warning"><i
+                                        class="fas fa-edit"></i></button>
+                            </a>
+                            <a href="{% url 'delete_event' object.id %}">
+                                <button style="color: white; border: none" type="button" class="btn-sm btn-danger"><i
+                                        class="fas fa-trash-alt"></i></button>
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <h1>{% trans "List empty" %}</h1>
+        {% endif %}
+
+
+    </div>
+
+
+{% endblock %}

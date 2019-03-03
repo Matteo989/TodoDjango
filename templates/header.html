@@ -1,0 +1,21 @@
+<!-- Charge les fichiers statics-->
+{% load static %}
+{% load i18n %}
+
+<div class="d-flex flex-column flex-md-row align-items-center p-3 px-md-4 mb-3 bg-white border-bottom shadow-sm">
+    <h5 class="my-0 mr-md-auto font-weight-normal titreHeader"><a href="{% url 'index' %}"><img src="{% static 'img/todolist.png' %}" style="width: 30px; margin-top: -5px;"/> TodoList</a></h5>
+    <nav class="my-2 my-md-0 mr-md-3">
+        {% if user.is_authenticated %}
+            <a class="p-2 text-dark" href="{% url 'edit_user' user.id %}" ><i class="fas fa-user mr-1"></i>{{ user.username|capfirst }}</a>
+            <a class="p-2 text-dark" href="{% url 'calendar' %}"><i
+                    class="fas fa-calendar mr-1"></i>{% trans "Calendrier" %}</a>
+            <a class="p-2 text-dark" href="{% url 'logout' %}"><i
+                    class="fas fa-sign-out-alt mr-1"></i>{% trans "Déconnexion" %}</a>
+        {% else %}
+            <a class="p-2 text-dark" href="{% url 'register' %}"><i
+                    class="fas fa-address-book mr-1"></i>{% trans "Insciption" %}</a>
+            <a class="p-2 text-dark" href="{% url 'login' %}"><i
+                    class="fas fa-sign-in-alt mr-1"></i>{% trans "Connexion" %}</a>
+        {% endif %}
+    </nav>
+</div>
