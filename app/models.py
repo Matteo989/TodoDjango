@@ -26,5 +26,9 @@ class Event(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, default=None)
 
     def __str__(self):
-        return '{}'.format(
-            self.titre if self is not None else u'?')
+        return '{} - {} - {} - {}'.format(
+            self.titre if self is not None else u'?',
+            self.description if self is not None else u'?',
+            self.date if self is not None else u'?',
+            self.user if self is not None else u'?',
+        )

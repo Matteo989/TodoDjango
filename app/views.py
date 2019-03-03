@@ -15,6 +15,9 @@ from django.views.generic import TemplateView, ListView, DetailView, FormView, C
 from app.form.register import RegisterForm
 from app.form.addEvent import AddEventForm
 from app.models import Event
+from celery.schedules import crontab
+
+import datetime
 
 
 class IndexView(TemplateView):
