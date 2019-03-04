@@ -12,10 +12,10 @@ from django.urls import reverse, reverse_lazy
 from django.utils.datetime_safe import datetime
 from django.views.generic import TemplateView, ListView, DetailView, FormView, CreateView, UpdateView
 
+from app.form.editProfil import EditProfilForm
 from app.form.register import RegisterForm
 from app.form.addEvent import AddEventForm
 from app.models import Event
-from celery.schedules import crontab
 
 import datetime
 
@@ -94,11 +94,16 @@ class EditEventFormView(UpdateView):
 
 class EditUserFormView(UpdateView):
     model = User
-    fields = ['email', 'username']
+    form_class = EditProfilForm
     template_name = 'editUserForm.html'
+
+    def get_queryset(self):
+        # Renvoie tout les event de l'utilisateur
+        return Event.objects.filter(user=self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super(EditUserFormView, self).get_context_data(**kwargs)
+        context['email'] = User.objects.filter(email=self.request.user.email)
         context['username'] = User.objects.filter(username=self.request.user.username)
         return context
 

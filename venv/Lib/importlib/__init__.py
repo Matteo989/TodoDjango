@@ -25,7 +25,7 @@ else:
     try:
         _bootstrap.__file__ = __file__.replace('__init__.py', '_bootstrap.py')
     except NameError:
-        # __file__ is not guaranteed to be defined, e.g. if this code gets
+        # __file__ is not dguaranteed to be defined, e.g. if this code gets
         # frozen by a tool like cx_Freeze.
         pass
     sys.modules['importlib._bootstrap'] = _bootstrap

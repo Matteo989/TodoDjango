@@ -38,8 +38,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'app.apps.AppConfig',
-    'djcelery',
-    'djcelery_email',
 ]
 
 MIDDLEWARE = [
@@ -125,17 +123,3 @@ STATIC_URL = '/static/'
 STATICFILES_DIRS=(
     os.path.join(BASE_DIR, "static/"),
 )
-
-CELERY_BROKER_URL = 'amqp://guest:guest@localhost:5672/'
-
-EMAIL_HOST = 'SMTP_HOST'
-
-EMAIL_PORT = 'SMTP_PORT'
-
-EMAIL_HOST_USER = 'SMTP_USER'
-
-EMAIL_HOST_PASSWORD = 'SMTP_PASSWORD'
-
-EMAIL_USE_TLS = True
-
-EMAIL_BACKEND = 'djcelery_email.backends.CeleryEmailBackend'
