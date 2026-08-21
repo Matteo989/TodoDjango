@@ -1,0 +1,872 @@
+// IAvid — schéma de données.
+// Conventions: cuid ids, createdAt/updatedAt partout, deletedAt sur les entités
+// archivables, index sur chaque FK et chaque champ de filtre, cascade depuis Workspace.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────── ENUMS ───────────────────────────────
+
+enum Role {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum IdeaStatus {
+  IDEA
+  RESEARCH
+  SCRIPT
+  ASSETS
+  VOICE
+  EDITING
+  REVIEW
+  READY
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum Difficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum ContentGoal {
+  VIRALITY
+  AFFILIATE
+  EDUCATION
+  ENTERTAINMENT
+  CONVERSION
+}
+
+enum ScriptStyle {
+  EDUCATIONAL
+  VIRAL
+  STORYTELLING
+  DIRECT
+  MYSTERIOUS
+}
+
+enum ScriptSection {
+  HOOK
+  PROBLEM
+  SOLUTION
+  RESULT
+  CTA
+}
+
+enum ClaimStatus {
+  VERIFIED
+  UNVERIFIED
+  OPINION
+  SAFETY_WARNING
+}
+
+enum AssetKind {
+  VIDEO
+  IMAGE
+  AUDIO
+}
+
+/// Provenance de l'asset. Détermine la validation des droits.
+enum AssetSource {
+  OWNED
+  LICENSED
+  AI_GENERATED
+  PUBLIC_DOMAIN
+  EXTERNAL_REFERENCE
+}
+
+/// Tri-état volontaire: l'absence d'information n'est pas une autorisation.
+enum CommercialUse {
+  ALLOWED
+  DENIED
+  UNKNOWN
+}
+
+/// 🟢 / 🟠 / 🔴 — calculé par le service de droits, stocké pour l'audit.
+enum RightsStatus {
+  CLEARED
+  NEEDS_REVIEW
+  BLOCKED
+}
+
+enum Platform {
+  TIKTOK
+  YOUTUBE_SHORTS
+  INSTAGRAM_REELS
+  SNAPCHAT_SPOTLIGHT
+}
+
+enum VideoStatus {
+  DRAFT
+  STORYBOARD
+  VOICE
+  RENDERING
+  RENDERED
+  REVIEW
+  READY
+  SCHEDULED
+  PUBLISHED
+  FAILED
+  ARCHIVED
+}
+
+enum PublicationStatus {
+  DRAFT
+  READY
+  SCHEDULED
+  PUBLISHED
+  FAILED
+  MANUAL_REQUIRED
+}
+
+enum CaptionStyle {
+  MINIMAL
+  BOLD
+  HIGHLIGHTED
+  KARAOKE
+  CENTERED
+}
+
+enum JobType {
+  GENERATE_IDEAS
+  GENERATE_SCRIPT
+  GENERATE_STORYBOARD
+  GENERATE_VOICE
+  GENERATE_VIDEO
+  GENERATE_CAPTIONS
+  RENDER_VIDEO
+  ANALYZE_VIDEO
+  PUBLISH_VIDEO
+  FETCH_ANALYTICS
+  FACT_CHECK
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum TrendKind {
+  TOPIC
+  KEYWORD
+  HASHTAG
+  TITLE
+  FORMAT
+  QUESTION
+  SEASONAL
+}
+
+enum ProductStatus {
+  CANDIDATE
+  ACTIVE
+  PAUSED
+  REJECTED
+}
+
+// ─────────────────────────── IDENTITÉ ───────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  memberships WorkspaceMember[]
+
+  @@index([deletedAt])
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  /// Langue par défaut des générations (ISO 639-1).
+  locale    String   @default("fr")
+  niche     String   @default("DIY / bricolage / maison")
+  /// Plafond mensuel de dépense IA en centimes. 0 = illimité.
+  aiBudgetCentsMonthly Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  members        WorkspaceMember[]
+  socialAccounts SocialAccount[]
+  ideas          Idea[]
+  scripts        Script[]
+  assets         Asset[]
+  musics         Music[]
+  videos         Video[]
+  templates      Template[]
+  products       Product[]
+  trends         Trend[]
+  tags           Tag[]
+  jobs           AIJob[]
+  rightsRecords  RightsRecord[]
+  voices         VoiceTrack[]
+
+  @@index([deletedAt])
+}
+
+model WorkspaceMember {
+  id          String    @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        Role      @default(OWNER)
+  createdAt   DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+  @@index([userId])
+}
+
+/// Un compte social = une identité de publication (langue, ton, hashtags, voix).
+model SocialAccount {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  platform     Platform
+  handle       String
+  locale       String   @default("fr")
+  audience     String?
+  tone         String?
+  defaultHashtags String[] @default([])
+  preferredVoiceId String?
+  logoAssetId  String?
+  watermarkAssetId String?
+  /// Applique la règle QC "durée >= 60s" (TikTok Creator Rewards).
+  requireMinDuration Boolean @default(false)
+  minDurationSec Int @default(60)
+  /// Credentials OAuth chiffrés côté application. Jamais renvoyés par l'API.
+  oauthPayload String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  publications Publication[]
+
+  @@unique([workspaceId, platform, handle])
+  @@index([workspaceId])
+}
+
+// ─────────────────────────── CONTENU ───────────────────────────
+
+model Idea {
+  id             String     @id @default(cuid())
+  workspaceId    String
+  title          String
+  description    String     @default("")
+  hook           String?
+  concept        String?
+  summary        String?
+  cta            String?
+  category       String     @default("DIY")
+  subcategory    String?
+  difficulty     Difficulty @default(BEGINNER)
+  /// Coût matériel estimé du projet DIY, en centimes.
+  estimatedCostCents Int    @default(0)
+  goal           ContentGoal @default(VIRALITY)
+  status         IdeaStatus @default(IDEA)
+  targetDurationSec Int     @default(45)
+  language       String     @default("fr")
+
+  // Scoring 0–100 (§4)
+  viralScore       Int @default(0)
+  originalityScore Int @default(0)
+  productionScore  Int @default(0)
+  affiliateScore   Int @default(0)
+  safetyScore      Int @default(100)
+
+  sources String[] @default([])
+  notes   String   @default("")
+  /// Idée d'origine si celle-ci est une duplication.
+  duplicatedFromId String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scripts   Script[]
+  videos    Video[]
+  tags      TagOnIdea[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, deletedAt])
+  @@index([workspaceId, createdAt])
+  @@index([category])
+}
+
+model Script {
+  id          String      @id @default(cuid())
+  workspaceId String
+  ideaId      String
+  style       ScriptStyle @default(VIRAL)
+  language    String      @default("fr")
+  platform    Platform?
+  targetDurationSec Int   @default(45)
+  audience    String?
+  technicalLevel Difficulty @default(BEGINNER)
+  /// La variante retenue par l'utilisateur parmi les N générées.
+  isSelected  Boolean     @default(false)
+  title       String
+  fullText    String      @default("")
+  /// Score de similarité au script le plus proche (0–100), null si non calculé.
+  similarityScore Int?
+  similarityMethod String?
+  similarToScriptId String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  idea      Idea            @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  blocks    ScriptBlock[]
+  claims    FactClaim[]
+  videos    Video[]
+
+  @@index([workspaceId])
+  @@index([ideaId])
+  @@index([workspaceId, isSelected])
+}
+
+model ScriptBlock {
+  id        String        @id @default(cuid())
+  scriptId  String
+  section   ScriptSection
+  order     Int
+  text      String
+  startMs   Int
+  endMs     Int
+  visualDirection String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+
+  @@index([scriptId, order])
+}
+
+/// Vérification factuelle (§9). Le statut VERIFIED n'est jamais posé par l'IA seule.
+model FactClaim {
+  id        String      @id @default(cuid())
+  scriptId  String
+  text      String
+  status    ClaimStatus @default(UNVERIFIED)
+  /// Sujet dangereux détecté de façon déterministe (electricity, gas, structural…).
+  safetyTopic String?
+  rationale String?
+  sourceUrl String?
+  /// True seulement après validation humaine explicite.
+  humanReviewed Boolean  @default(false)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+
+  @@index([scriptId])
+  @@index([status])
+}
+
+// ─────────────────────────── ASSETS & DROITS ───────────────────────────
+
+model Asset {
+  id          String      @id @default(cuid())
+  workspaceId String
+  kind        AssetKind
+  source      AssetSource
+  name        String
+  /// Clé dans le driver de stockage (local ou S3), pas un chemin absolu.
+  storageKey  String
+  thumbnailKey String?
+  mimeType    String
+  sizeBytes   Int         @default(0)
+  durationMs  Int?
+  width       Int?
+  height      Int?
+  fps         Float?
+  checksum    String?
+
+  author       String?
+  sourceUrl    String?
+  license      String?
+  licenseProofKey String?
+  acquiredAt   DateTime?
+  commercialUse CommercialUse @default(UNKNOWN)
+  notes        String        @default("")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rightsRecord RightsRecord?
+  scenes       Scene[]
+
+  @@index([workspaceId, kind])
+  @@index([workspaceId, source])
+  @@index([workspaceId, deletedAt])
+  @@index([commercialUse])
+}
+
+/// Piste d'audit des droits. Séparée d'Asset: une licence a un territoire,
+/// une expiration et des restrictions qu'un booléen ne peut pas porter.
+model RightsRecord {
+  id          String       @id @default(cuid())
+  workspaceId String
+  assetId     String       @unique
+  owner       String?
+  license     String?
+  proofKey    String?
+  proofUrl    String?
+  expiresAt   DateTime?
+  commercialUse CommercialUse @default(UNKNOWN)
+  territory   String       @default("WORLDWIDE")
+  restrictions String      @default("")
+  status      RightsStatus @default(NEEDS_REVIEW)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  asset     Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+}
+
+model Music {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  storageKey  String
+  bpm         Int?
+  mood        String?
+  license     String?
+  commercialUse CommercialUse @default(UNKNOWN)
+  source      String?
+  durationMs  Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  videos    Video[]
+
+  @@index([workspaceId, commercialUse])
+  @@index([workspaceId, deletedAt])
+}
+
+model VoiceTrack {
+  id          String   @id @default(cuid())
+  workspaceId String
+  videoId     String?
+  provider    String
+  voiceId     String
+  voiceName   String?
+  language    String   @default("fr")
+  speed       Float    @default(1.0)
+  stability   Float    @default(0.5)
+  tone        String?
+  text        String
+  storageKey  String
+  format      String   @default("mp3")
+  durationMs  Int      @default(0)
+  costCents   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  video     Video?    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([videoId])
+}
+
+// ─────────────────────────── VIDÉO ───────────────────────────
+
+model Template {
+  id          String   @id @default(cuid())
+  workspaceId String
+  key         String
+  name        String
+  description String   @default("")
+  /// Structure des sections et de leurs proportions, en JSON.
+  structure   Json
+  targetDurationSec Int @default(45)
+  captionStyle CaptionStyle @default(BOLD)
+  captionPosition String @default("center")
+  captionFont  String  @default("DejaVu Sans")
+  captionSizePx Int    @default(72)
+  captionPrimaryColor String @default("#FFFFFF")
+  captionAccentColor  String @default("#FFD400")
+  transition   String  @default("fade")
+  musicMood    String?
+  introEnabled Boolean @default(false)
+  outroEnabled Boolean @default(true)
+  isBuiltIn    Boolean @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  videos    Video[]
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId])
+}
+
+model Video {
+  id          String      @id @default(cuid())
+  workspaceId String
+  ideaId      String?
+  scriptId    String?
+  templateId  String?
+  musicId     String?
+  title       String
+  status      VideoStatus @default(DRAFT)
+  targetDurationSec Int   @default(45)
+  fps         Int         @default(30)
+  width       Int         @default(1080)
+  height      Int         @default(1920)
+  captionStyle CaptionStyle @default(BOLD)
+  /// Bloque l'export si un asset du storyboard n'est pas commercialement utilisable.
+  monetizationReady Boolean @default(false)
+  watermarkEnabled  Boolean @default(false)
+  musicVolume Float       @default(0.18)
+
+  /// Rendu master (clé de stockage) + miniature.
+  masterKey    String?
+  thumbnailKey String?
+  renderedDurationMs Int?
+
+  /// Coûts de production agrégés, en centimes.
+  costVoiceCents  Int @default(0)
+  costVideoAiCents Int @default(0)
+  costLlmCents    Int @default(0)
+  costStorageCents Int @default(0)
+  estimatedRevenueCents Int @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  idea          Idea?           @relation(fields: [ideaId], references: [id], onDelete: SetNull)
+  script        Script?         @relation(fields: [scriptId], references: [id], onDelete: SetNull)
+  template      Template?       @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  music         Music?          @relation(fields: [musicId], references: [id], onDelete: SetNull)
+  scenes        Scene[]
+  versions      VideoVersion[]
+  voiceTracks   VoiceTrack[]
+  captionTracks CaptionTrack[]
+  qualityReports QualityReport[]
+  publications  Publication[]
+  analytics     Analytics[]
+  affiliateLinks AffiliateLink[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, deletedAt])
+  @@index([ideaId])
+  @@index([scriptId])
+}
+
+model Scene {
+  id         String   @id @default(cuid())
+  videoId    String
+  order      Int
+  section    ScriptSection @default(SOLUTION)
+  /// Durées en millisecondes: le montage cumule 15 scènes, les flottants dérivent.
+  startMs    Int
+  durationMs Int
+  narration  String   @default("")
+  visualPrompt String @default("")
+  caption    String   @default("")
+  transition String   @default("fade")
+  /// Zoom Ken Burns appliqué aux images fixes (1.0 = aucun).
+  zoom       Float    @default(1.08)
+  assetId    String?
+  /// Sous-partie de l'asset source à utiliser, en ms.
+  assetTrimStartMs Int?
+  assetTrimEndMs   Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  video Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  asset Asset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  @@index([videoId, order])
+  @@index([assetId])
+}
+
+/// Une master, N versions plateforme. Titre/description/hashtags vivent ici.
+model VideoVersion {
+  id          String   @id @default(cuid())
+  videoId     String
+  platform    Platform
+  title       String   @default("")
+  description String   @default("")
+  hashtags    String[] @default([])
+  cta         String   @default("")
+  storageKey  String?
+  durationMs  Int?
+  sizeBytes   Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  video        Video         @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  publications Publication[]
+
+  @@unique([videoId, platform])
+  @@index([videoId])
+}
+
+model CaptionTrack {
+  id        String       @id @default(cuid())
+  videoId   String
+  format    String       // srt | vtt | ass
+  style     CaptionStyle @default(BOLD)
+  language  String       @default("fr")
+  storageKey String
+  /// "whisper" quand transcrit, "estimated" quand aligné sur les durées de scènes.
+  method    String       @default("estimated")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, format, style])
+  @@index([videoId])
+}
+
+model QualityReport {
+  id        String   @id @default(cuid())
+  videoId   String
+  score     Int
+  passed    Boolean
+  /// Liste de { id, label, status: pass|warn|fail, detail }.
+  checks    Json
+  createdAt DateTime @default(now())
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([videoId, createdAt])
+}
+
+// ─────────────────────────── PUBLICATION & MESURE ───────────────────────────
+
+model Publication {
+  id              String            @id @default(cuid())
+  videoId         String
+  videoVersionId  String?
+  socialAccountId String?
+  platform        Platform
+  status          PublicationStatus @default(DRAFT)
+  scheduledAt     DateTime?
+  publishedAt     DateTime?
+  externalId      String?
+  externalUrl     String?
+  caption         String            @default("")
+  hashtags        String[]          @default([])
+  failureReason   String?
+  /// Renseigné quand aucune API officielle ne couvre l'opération.
+  manualReason    String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  video         Video          @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  videoVersion  VideoVersion?  @relation(fields: [videoVersionId], references: [id], onDelete: SetNull)
+  socialAccount SocialAccount? @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
+  analytics     Analytics[]
+
+  @@index([videoId])
+  @@index([status, scheduledAt])
+  @@index([platform])
+}
+
+model Analytics {
+  id            String   @id @default(cuid())
+  videoId       String
+  publicationId String?
+  platform      Platform
+  /// Jour de mesure (UTC minuit) — une ligne par jour et par publication.
+  measuredOn    DateTime
+  views         Int      @default(0)
+  likes         Int      @default(0)
+  comments      Int      @default(0)
+  shares        Int      @default(0)
+  followersGained Int    @default(0)
+  avgWatchMs    Int      @default(0)
+  completionRate Float   @default(0)
+  engagementRate Float   @default(0)
+  revenueCents  Int      @default(0)
+  /// CONTENT_SCORE 0–100 (rétention, engagement, partages, conversion).
+  contentScore  Int      @default(0)
+  source        String   @default("manual")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  video       Video        @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  publication Publication? @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+
+  @@unique([publicationId, measuredOn])
+  @@index([videoId])
+  @@index([platform, measuredOn])
+}
+
+// ─────────────────────────── AFFILIATION ───────────────────────────
+
+model Product {
+  id          String        @id @default(cuid())
+  workspaceId String
+  name        String
+  brand       String?
+  url         String
+  priceCents  Int           @default(0)
+  currency    String        @default("EUR")
+  category    String?
+  commissionRate Float      @default(0)
+  platform    String?
+  status      ProductStatus @default(CANDIDATE)
+  notes       String        @default("")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  links     AffiliateLink[]
+
+  @@index([workspaceId, status])
+}
+
+/// Le lien affilié est TOUJOURS fourni par l'utilisateur. L'app n'ajoute que l'UTM.
+model AffiliateLink {
+  id          String   @id @default(cuid())
+  productId   String
+  videoId     String?
+  /// URL d'affiliation collée par l'utilisateur. Jamais fabriquée par l'app.
+  affiliateUrl String
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  clicks      Int      @default(0)
+  conversions Int      @default(0)
+  revenueCents Int     @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  video   Video?  @relation(fields: [videoId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([videoId])
+}
+
+// ─────────────────────────── TENDANCES & TAGS ───────────────────────────
+
+/// Alimenté manuellement ou par un TrendProvider autorisé. Jamais par scraping.
+model Trend {
+  id          String    @id @default(cuid())
+  workspaceId String
+  kind        TrendKind
+  value       String
+  platform    Platform?
+  /// Volume/score déclaré par la source, sans unité imposée.
+  weight      Int       @default(0)
+  season      String?
+  source      String    @default("manual")
+  notes       String    @default("")
+  observedAt  DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, kind])
+  @@index([workspaceId, deletedAt])
+}
+
+model Tag {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  color       String   @default("#64748b")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ideas     TagOnIdea[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model TagOnIdea {
+  ideaId String
+  tagId  String
+
+  idea Idea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([ideaId, tagId])
+  @@index([tagId])
+}
+
+// ─────────────────────────── JOBS & LOGS IA ───────────────────────────
+
+/// Sert à la fois de suivi de job (§33) et de journal IA + coûts (§34).
+/// Les dédoubler créerait deux vérités divergentes sur la même opération.
+model AIJob {
+  id          String    @id @default(cuid())
+  workspaceId String
+  type        JobType
+  status      JobStatus @default(QUEUED)
+  progress    Int       @default(0)
+  /// Entité concernée (idea/script/video) pour le rattachement des coûts.
+  entityType  String?
+  entityId    String?
+
+  provider    String?
+  model       String?
+  promptVersion String?
+  inputTokens Int      @default(0)
+  outputTokens Int     @default(0)
+  costCents   Int      @default(0)
+  durationMs  Int      @default(0)
+
+  input       Json?
+  result      Json?
+  error       String?
+
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, type])
+  @@index([workspaceId, status])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
