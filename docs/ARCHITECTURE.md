@@ -150,6 +150,36 @@ D'où le passage sur Binance.
   stratégie reste hors du marché pendant les baisses (BTC a perdu plus de 70 % en 2018 puis en 2022).
 - Le passé ne garantit pas l'avenir : la validation en simulation (30 jours minimum) reste obligatoire.
 
+## Comparaison des familles de robots (novembre 2026)
+
+Commande : `dotnet run --project tools/MNBot.Research -- data/mnbot.db 0.001 0.5 portfolio`.
+Capital 100, 70 maximum investis, frais + glissement + demi-spread = 0,175 % par ordre, décision à la clôture et
+exécution à l'ouverture suivante. Résultats annualisés (« par an ») et pire baisse depuis un sommet.
+
+| Famille (exemple représentatif) | 2018-2022 (entraînement) | 2023-2026 (test) | Pire baisse |
+|---|---|---|---|
+| Livret 3 % | +3 %/an | +3 %/an | 0 % |
+| Achat-conservation BTC | +14 %/an | +38 %/an | −73 % |
+| **Filtre de tendance BTC (investi si prix > moyenne 100 j)** | **+45 %/an** | **+25 %/an** | **−29 %** |
+| Filtre de tendance BTC (moyennes 50 j / 200 j) | +35 % / +26 %/an | +36 % / +24 %/an | −46 % / −47 % |
+| Filtre de tendance BTC+ETH (100 j) | +43 %/an | +22 %/an | −40 % |
+| Rotation sur les cryptos les plus fortes, univers choisi en 2026 | +81 %/an | +22 %/an | −57 % |
+| **Même rotation, univers réaliste de début 2018** | +38 %/an | **−2 %/an** | −73 % |
+| Robot de grille BTC (type Pionex) | −14 à +5 %/an | −6 à +7 %/an | jusqu'à −64 % |
+| Robot DCA type 3Commas (sans stop) | +6 à +16 %/an | +10 à +13 %/an | −27 à −56 % |
+| Cassure 4h actuelle (0,50 € de risque par trade) | ≈ +6 €/an | ≈ +3 €/an | ≈ −5 € |
+
+Lecture :
+- La rotation sur les « meilleures » cryptos n'est spectaculaire que parce que la liste a été choisie avec la
+  connaissance de 2026 (biais du survivant). Avec les cryptos dominantes de 2018 (EOS, NEO, IOTA… qui se sont
+  effondrées), elle ne gagne plus rien sur 2023-2026 : **rejetée**.
+- Les robots de grille, très populaires, gagnent en marché sans direction mais perdent dans les tendances : **rejetés**.
+- Les robots DCA rapportent ~10 %/an mais n'ont pas de stop : une crypto qui s'effondre bloque tout le capital.
+- Le **filtre de tendance sur BTC** est la seule approche positive sur les deux périodes, pour les trois longueurs de
+  moyenne testées, avec des baisses plus faibles que l'achat-conservation. C'est aussi l'approche la mieux documentée
+  dans la littérature (« time-series momentum »). Contrepartie : 70 € investis d'un coup et une baisse temporaire
+  de 20 à 30 € possible, ce qui dépasse les limites actuelles (0,50 € par trade, 3 € par semaine).
+
 ## Sécurité
 
 - Secrets uniquement dans `.env` (jamais dans le code ni sur GitHub) ; permissions de retrait jamais demandées.
