@@ -180,6 +180,30 @@ Lecture :
   dans la littérature (« time-series momentum »). Contrepartie : 70 € investis d'un coup et une baisse temporaire
   de 20 à 30 € possible, ce qui dépasse les limites actuelles (0,50 € par trade, 3 € par semaine).
 
+## Plus de cryptos, actions, ETF et or (novembre 2026)
+
+Commande : `dotnet run --project tools/MNBot.Research -- data/mnbot.db 0.001 0.5 assets`.
+ETF journaliers Yahoo Finance (cours ajustés des dividendes) ; mêmes coûts et même méthode que ci-dessus.
+
+| Portefeuille (filtre de tendance) | 2018-2022 | 2023-2026 | Pire baisse |
+|---|---|---|---|
+| BTC seul (100 j) | +45 %/an | +25 %/an | −29 % |
+| 14 cryptos dominantes en 2018 (100 j) | +26 %/an | +8 %/an | −57 % |
+| 6 grandes cryptos (100 j) | +43 %/an | +13 %/an | −55 % |
+| Achat-conservation S&P 500 / MSCI World € | +7 % / +6 %/an | +15 % / +12 %/an | −25 % |
+| Tendance S&P 500 (200 j) | +3 %/an | +9 %/an | −16 % |
+| Multi-actifs ETF + or + obligations (200 j) | +3 %/an | +8 %/an | −10 % |
+| **Mix tendance BTC / or (moitié-moitié)** | **+22 %/an** | **+22 %/an** | **−20 %** |
+| Mix tendance BTC / S&P 500 / or (tiers) | +16 %/an | +18 %/an | −18 % |
+
+Lecture :
+- Multiplier les cryptos **dégrade** le résultat quand on choisit la liste honnêtement (sans connaître l'avenir) :
+  les petites cryptos baissent plus et remontent moins que BTC.
+- Les actions et ETF seuls rapportent moins mais baissent beaucoup moins ; leur intérêt est la diversification.
+- Le mélange **BTC + or**, chacun avec son filtre de tendance, est le plus régulier : environ +22 %/an sur les deux
+  périodes, pire baisse −20 %. Les deux s'achètent sur Binance (l'or via le jeton PAXG, coté en USDT).
+- Les actions/ETF nécessitent un courtier avec API (ce n'est pas possible sur Binance) : piste pour plus tard.
+
 ## Sécurité
 
 - Secrets uniquement dans `.env` (jamais dans le code ni sur GitHub) ; permissions de retrait jamais demandées.

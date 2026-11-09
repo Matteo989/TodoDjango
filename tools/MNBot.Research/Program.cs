@@ -47,6 +47,7 @@ if (args.Length > 3 && args[3] == "sweep")
 }
 
 if (args.Length > 3 && args[3] == "portfolio") { RunPortfolio(repo); return; }
+if (args.Length > 3 && args[3] == "assets") { RunAssets(repo); return; }
 
 var periods = new[]
 {
@@ -199,5 +200,92 @@ static void RunPortfolio(SqliteRepository repo)
         Console.WriteLine($"{"Stratégie",-38}{"Final",9}{"Par an",9}{"Baisse max",12}{"Ordres",8}{"Investi",9}{"Frais",8}");
         foreach (var r in results)
             Console.WriteLine($"{r.Name,-38}{r.Final,9:0.0}{r.Cagr,9:P1}{-r.MaxDd,12:P0}{r.Orders,8}{r.InMarket,9:P0}{r.Fees,8:0.0}");
+    }
+}
+
+static void RunAssets(SqliteRepository repo)
+{
+    var u26 = new[] { "BTC", "ETH", "BNB", "XRP", "ADA", "SOL", "LTC", "LINK", "DOGE", "TRX" };
+    var u18 = new[] { "BTC", "ETH", "XRP", "BCH", "ADA", "LTC", "XLM", "NEO", "EOS", "IOTA", "TRX", "QTUM", "ETC", "BNB" };
+    var etfs = new[] { "SPY/USD", "QQQ/USD", "GLD/USD", "TLT/USD", "EEM/USD", "CW8/EUR", "IWDA/EUR" };
+    var data = new Dictionary<string, List<Candle>>();
+    foreach (var c in u26.Concat(u18).Distinct())
+        data[c] = CandleTools.Aggregate(repo.GetCandlesAsync("binance", c + "/USDT", Timeframe.H1).Result, Timeframe.H1, Timeframe.D1);
+    foreach (var e in etfs) data[e] = repo.GetCandlesAsync("yahoo", e, Timeframe.D1).Result.ToList();
+    var dates = data.ToDictionary(kv => kv.Key, kv => kv.Value.Select(x => x.OpenTime).ToArray());
+    // dernière bougie clôturée à la date d (week-ends et jours fériés pour les ETF)
+    int At(string s, DateTime d) { var i = Array.BinarySearch(dates[s], d); return i >= 0 ? i : ~i - 1; }
+    bool Up(string s, DateTime d, int n) { var i = At(s, d); var m = PortfolioLab.SmaAt(data[s], i, n); return m is { } v && i >= 0 && data[s][i].Close > v; }
+    Dictionary<string, List<Candle>> Sub(IEnumerable<string> s) => s.ToDictionary(x => x, x => data[x]);
+    const decimal A = 0.70m;
+
+    Dictionary<string, decimal> TrendBasket(IEnumerable<string> names, DateTime d, int n, decimal budget)
+    {
+        var listed = names.Where(s => At(s, d) >= n).ToList();
+        if (listed.Count == 0) return new();
+        return listed.ToDictionary(s => s, s => Up(s, d, n) ? budget / listed.Count : 0m);
+    }
+
+    var periods = new[]
+    {
+        ("ENTRAÎNEMENT 2018-06 → 2022-12", new DateTime(2018, 6, 1), new DateTime(2023, 1, 1)),
+        ("TEST 2023-01 → 2026-11", new DateTime(2023, 1, 1), new DateTime(2026, 11, 7)),
+        ("TOUT 2018-06 → 2026-11", new DateTime(2018, 6, 1), new DateTime(2026, 11, 7)),
+    };
+    foreach (var (label, from, to) in periods)
+    {
+        var res = new List<PortfolioLab.Result> { PortfolioLab.Savings(from, to) };
+        PortfolioLab.Result W(string name, IEnumerable<string> syms, Func<DateTime, Dictionary<string, decimal>> rule, decimal th = 0.05m)
+        {
+            var sub = Sub(syms);
+            return PortfolioLab.RunWeights(name, sub, from, to, PortfolioLab.Rule(sub, from, to, (d, _) => rule(d)), th);
+        }
+
+        // ---- Crypto
+        res.Add(W("Tendance BTC seul (100 j)", new[] { "BTC" }, d => TrendBasket(new[] { "BTC" }, d, 100, A)));
+        res.Add(W("Tendance panier U26 (10 cryptos, 100 j)", u26, d => TrendBasket(u26, d, 100, A)));
+        res.Add(W("Tendance panier U18 (14 cryptos, 100 j)", u18, d => TrendBasket(u18, d, 100, A)));
+        res.Add(W("Tendance panier U18 (14 cryptos, 50 j)", u18, d => TrendBasket(u18, d, 50, A)));
+        var top6 = new[] { "BTC", "ETH", "XRP", "BNB", "ADA", "LTC" }; // présentes dans le top en 2018 ET en 2026
+        res.Add(W("Tendance 6 grandes cryptos (100 j)", top6, d => TrendBasket(top6, d, 100, A)));
+        // BTC filtre de marché : les altcoins ne sont achetés que si BTC est lui-même en tendance
+        res.Add(W("Panier U18 si BTC en tendance (100 j)", u18, d => Up("BTC", d, 100) ? TrendBasket(u18, d, 100, A) : new()));
+
+        // ---- Actions / ETF
+        res.Add(W("Achat-conservation S&P 500 (SPY)", new[] { "SPY/USD" }, d => new() { ["SPY/USD"] = A }, 0.5m));
+        res.Add(W("Achat-conservation MSCI World € (CW8)", new[] { "CW8/EUR" }, d => new() { ["CW8/EUR"] = A }, 0.5m));
+        res.Add(W("Tendance S&P 500 (200 j)", new[] { "SPY/USD" }, d => TrendBasket(new[] { "SPY/USD" }, d, 200, A)));
+        res.Add(W("Tendance Nasdaq (200 j)", new[] { "QQQ/USD" }, d => TrendBasket(new[] { "QQQ/USD" }, d, 200, A)));
+        var gtaa = new[] { "SPY/USD", "QQQ/USD", "EEM/USD", "GLD/USD", "TLT/USD" };
+        res.Add(W("Multi-actifs ETF + or + oblig. (200 j)", gtaa, d => TrendBasket(gtaa, d, 200, A)));
+        res.Add(W("Achat-conservation multi-actifs", gtaa, d => gtaa.ToDictionary(s => s, _ => A / gtaa.Length), 0.1m));
+        res.Add(W("Mix : tendance BTC / or (moitié-moitié)", new[] { "BTC", "GLD/USD" }, d =>
+        {
+            var w = TrendBasket(new[] { "BTC" }, d, 100, A / 2);
+            foreach (var kv in TrendBasket(new[] { "GLD/USD" }, d, 200, A / 2)) w[kv.Key] = kv.Value;
+            return w;
+        }));
+
+        // ---- Mélange crypto + actifs classiques
+        var mix = new[] { "BTC", "ETH" }.Concat(gtaa).ToArray();
+        res.Add(W("Mix : tendance BTC+ETH 50 % / multi-actifs 50 %", mix, d =>
+        {
+            var w = TrendBasket(new[] { "BTC", "ETH" }, d, 100, A / 2);
+            foreach (var kv in TrendBasket(gtaa, d, 200, A / 2)) w[kv.Key] = kv.Value;
+            return w;
+        }));
+        var mix2 = new[] { "BTC" }.Concat(new[] { "SPY/USD", "GLD/USD" }).ToArray();
+        res.Add(W("Mix : tendance BTC / S&P 500 / or (1/3 chacun)", mix2, d =>
+        {
+            var w = TrendBasket(new[] { "BTC" }, d, 100, A / 3);
+            foreach (var kv in TrendBasket(new[] { "SPY/USD", "GLD/USD" }, d, 200, A * 2 / 3)) w[kv.Key] = kv.Value;
+            return w;
+        }));
+
+        Console.WriteLine();
+        Console.WriteLine($"=== {label} — capital 100, 70 max investis, coûts 0,175 % par ordre (cours ajustés des dividendes)");
+        Console.WriteLine($"{"Stratégie",-48}{"Final",8}{"Par an",9}{"Baisse max",12}{"Ordres",8}{"Investi",9}");
+        foreach (var r in res)
+            Console.WriteLine($"{r.Name,-48}{r.Final,8:0.0}{r.Cagr,9:P1}{-r.MaxDd,12:P0}{r.Orders,8}{r.InMarket,9:P0}");
     }
 }
