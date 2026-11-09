@@ -1,0 +1,115 @@
+{
+  "Bot": {
+    "Mode": "Paper",
+    "Exchange": "Kraken",
+    "Symbols": [ "BTC/EUR", "ETH/EUR" ],
+    "LoopIntervalSeconds": 10,
+    "CandleRefreshSeconds": 60,
+    "SignalMaxAgeMinutes": 15,
+    "AutoStartPaper": true,
+    "PaperValidationMinDays": 30,
+    "PaperValidationMinTrades": 20,
+    "AllowLiveWithoutValidation": false
+  },
+
+  "Risk": {
+    "InitialCapital": 100.0,
+    "MaxTradingCapital": 70.0,
+    "Reserve": 20.0,
+    "SafetyMargin": 10.0,
+    "RiskPerTrade": 0.50,
+    "MaxDailyLoss": 1.50,
+    "MaxWeeklyLoss": 3.00,
+    "MaxOpenPositions": 1,
+    "TakerFeeRate": 0.0040,
+    "SlippageRate": 0.0005,
+    "MinNetRewardRisk": 1.3,
+    "MaxFeeShareOfReward": 0.40,
+    "MaxSpreadPct": 0.003,
+    "TimeZone": "Europe/Paris",
+    "MaxTickerAgeSeconds": 60,
+    "MaxPriceJumpPct": 0.08,
+    "MaxConsecutiveApiErrors": 5
+  },
+
+  "Strategies": [
+    {
+      "Id": "trend-pullback",
+      "Name": "Trend Pullback (référence : stop 1,5 ATR, objectif 2R)",
+      "Type": "TrendPullback",
+      "Enabled": true,
+      "Parameters": {
+        "EmaFast": 20, "EmaSlow": 50, "EmaTrend": 200,
+        "RsiPeriod": 14, "RsiThreshold": 50, "RsiCrossLookback": 1,
+        "AtrPeriod": 14, "VolumePeriod": 20, "VolumeMultiplier": 1.0, "RequireVolumeConfirmation": true,
+        "PullbackLookback": 5, "PullbackTolerancePct": 0.2,
+        "StopAtrMultiplier": 1.5, "RewardRiskRatio": 2.0, "ExitOnTrendBreak": true
+      }
+    },
+    {
+      "Id": "tp-wide",
+      "Name": "Variante stop 3 ATR, objectif 2R",
+      "Type": "TrendPullback",
+      "Enabled": false,
+      "Parameters": {
+        "EmaFast": 20, "EmaSlow": 50, "EmaTrend": 200,
+        "RsiPeriod": 14, "RsiThreshold": 50, "RsiCrossLookback": 1,
+        "AtrPeriod": 14, "VolumePeriod": 20, "VolumeMultiplier": 1.0, "RequireVolumeConfirmation": true,
+        "PullbackLookback": 5, "PullbackTolerancePct": 0.2,
+        "StopAtrMultiplier": 3.0, "RewardRiskRatio": 2.0, "ExitOnTrendBreak": true
+      }
+    },
+    {
+      "Id": "tp-wide-rr3",
+      "Name": "Variante stop 3 ATR, objectif 3R, sans sortie anticipée",
+      "Type": "TrendPullback",
+      "Enabled": false,
+      "Parameters": {
+        "EmaFast": 20, "EmaSlow": 50, "EmaTrend": 200,
+        "RsiPeriod": 14, "RsiThreshold": 50, "RsiCrossLookback": 1,
+        "AtrPeriod": 14, "VolumePeriod": 20, "VolumeMultiplier": 1.0, "RequireVolumeConfirmation": true,
+        "PullbackLookback": 5, "PullbackTolerancePct": 0.2,
+        "StopAtrMultiplier": 3.0, "RewardRiskRatio": 3.0, "ExitOnTrendBreak": false
+      }
+    },
+    {
+      "Id": "tp-novol",
+      "Name": "Variante sans filtre de volume, RSI sur 3 bougies",
+      "Type": "TrendPullback",
+      "Enabled": false,
+      "Parameters": {
+        "EmaFast": 20, "EmaSlow": 50, "EmaTrend": 200,
+        "RsiPeriod": 14, "RsiThreshold": 50, "RsiCrossLookback": 3,
+        "AtrPeriod": 14, "VolumePeriod": 20, "VolumeMultiplier": 1.0, "RequireVolumeConfirmation": false,
+        "PullbackLookback": 5, "PullbackTolerancePct": 0.2,
+        "StopAtrMultiplier": 1.5, "RewardRiskRatio": 2.0, "ExitOnTrendBreak": true
+      }
+    }
+  ],
+
+  "Backtest": {
+    "SpreadPct": 0.0005,
+    "TrainRatio": 0.7,
+    "DefaultHistoryDays": 730
+  },
+
+  "Kraken": {
+    "BaseUrl": "https://api.kraken.com",
+    "TimeoutSeconds": 15,
+    "ValidateOrdersOnly": false
+  },
+
+  "Server": {
+    "Urls": "http://127.0.0.1:5080"
+  },
+
+  "Ai": {
+    "Enabled": true,
+    "Model": "claude-opus-5-5",
+    "MaxTokens": 2000
+  },
+
+  "Notifications": {
+    "TelegramMinLevel": "Warning"
+  }
+}

@@ -1,2 +1,29 @@
-/.idea/
-.idea/workspace.xml
+# Secrets
+.env
+*.pem
+
+# Données et journaux du bot
+data/
+logs/
+publish/
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# Node / dashboard
+node_modules/
+dashboard/dist/
+src/MNBot.Api/wwwroot/
+
+# Python
+__pycache__/
+.venv/
+venv/
+
+# Divers
+.DS_Store
+*.swp
