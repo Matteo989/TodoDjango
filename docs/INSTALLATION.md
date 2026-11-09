@@ -77,5 +77,5 @@ Sous Windows, utilisez WSL2 (Ubuntu) et suivez les mêmes commandes.
 ## Vérifier l'installation
 
 ```bash
-dotnet test        # lance les 48 tests automatisés
+dotnet test        # lance les 62 tests automatisés
 ```

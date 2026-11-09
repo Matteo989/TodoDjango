@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MNBot.Core\MNBot.Core.csproj" />
     <ProjectReference Include="..\MNBot.Exchanges.Kraken\MNBot.Exchanges.Kraken.csproj" />
+    <ProjectReference Include="..\MNBot.Exchanges.Binance\MNBot.Exchanges.Binance.csproj" />
   </ItemGroup>
 
   <ItemGroup>

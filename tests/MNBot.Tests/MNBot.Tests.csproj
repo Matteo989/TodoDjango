@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\MNBot.Core\MNBot.Core.csproj" />
     <ProjectReference Include="..\..\src\MNBot.Exchanges.Kraken\MNBot.Exchanges.Kraken.csproj" />
     <ProjectReference Include="..\..\src\MNBot.Api\MNBot.Api.csproj" />
+    <ProjectReference Include="..\..\src\MNBot.Exchanges.Binance\MNBot.Exchanges.Binance.csproj" />
   </ItemGroup>
 
 </Project>

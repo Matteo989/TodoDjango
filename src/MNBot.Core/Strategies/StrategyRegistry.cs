@@ -8,7 +8,12 @@ public sealed class StrategyDefinition
     public string Type { get; set; } = "TrendPullback";
     /// <summary>Stratégie utilisée par le moteur temps réel (paper/réel). Les variantes non activées servent au backtest.</summary>
     public bool Enabled { get; set; } = true;
+    /// <summary>Paramètres si Type = "TrendPullback".</summary>
     public TrendPullbackParameters Parameters { get; set; } = new();
+    /// <summary>Paramètres si Type = "TrendFollowing".</summary>
+    public TrendFollowingParameters Trend { get; set; } = new();
+
+    public object ActiveParameters => Type == "TrendFollowing" ? Trend : Parameters;
 }
 
 public static class StrategyFactory
@@ -16,6 +21,7 @@ public static class StrategyFactory
     public static IStrategy Create(StrategyDefinition def) => def.Type switch
     {
         "TrendPullback" => new TrendPullbackStrategy(def.Parameters.Clone(), def.Id, def.Name),
+        "TrendFollowing" => new TrendFollowingStrategy(def.Trend.Clone(), def.Id, def.Name),
         _ => throw new NotSupportedException($"Type de stratégie inconnu : {def.Type}"),
     };
 }

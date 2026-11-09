@@ -77,25 +77,40 @@ public sealed class BacktestService
             var trainRatio = Math.Clamp(req.TrainRatio ?? _settings.TrainRatio, 0.3m, 0.9m);
             var notes = new List<string>();
 
-            var markets = new List<BacktestMarketData>();
+            // Historique 1h de chaque actif ; les unités supérieures sont reconstruites à partir du 1h
+            var h1BySymbol = new Dictionary<string, IReadOnlyList<Candle>>();
+            var instruments = new Dictionary<string, InstrumentSpec>();
             foreach (var symbol in symbols)
             {
-                var from = req.Days is { } d ? DateTime.UtcNow.AddDays(-d - 60) : (DateTime?)null; // +60 jours de préchauffage des indicateurs
+                var from = req.Days is { } d ? DateTime.UtcNow.AddDays(-d - 120) : (DateTime?)null; // +120 jours de préchauffage des indicateurs
                 var h1 = await _repo.GetCandlesAsync(source, symbol, Timeframe.H1, from);
                 if (h1.Count < 300) throw new InvalidOperationException($"Historique insuffisant pour {symbol} (source {source} : {h1.Count} bougies 1h). Importez d'abord l'historique.");
-                var stored4h = await _repo.GetCandlesAsync(source, symbol, Timeframe.H4);
-                IReadOnlyList<Candle> h4 = stored4h.Count >= 250 && source == TradingEngine.SourceName
-                    ? stored4h
-                    : CandleTools.Aggregate(h1, Timeframe.H1, Timeframe.H4);
                 var gaps = CountGaps(h1);
                 if (gaps > 0) notes.Add($"{symbol} : {gaps} trou(s) dans les données 1h (bougies manquantes).");
-                markets.Add(new BacktestMarketData { Instrument = await _md.GetInstrumentAsync(symbol, ct), EntryCandles = h1, TrendCandles = h4 });
+                h1BySymbol[symbol] = h1;
+                instruments[symbol] = await _md.GetInstrumentAsync(symbol, ct);
             }
+            var seriesCache = new Dictionary<(string, Timeframe), IReadOnlyList<Candle>>();
+            async Task<IReadOnlyList<Candle>> Series(string symbol, Timeframe tf)
+            {
+                if (seriesCache.TryGetValue((symbol, tf), out var cached)) return cached;
+                var h1 = h1BySymbol[symbol];
+                IReadOnlyList<Candle> result = tf == Timeframe.H1 ? h1 : CandleTools.Aggregate(h1, Timeframe.H1, tf);
+                if (tf != Timeframe.H1)
+                {
+                    var stored = await _repo.GetCandlesAsync(source, symbol, tf);
+                    if (stored.Count > result.Count) result = stored; // ex. Kraken : historique 4h plus long que le 1h
+                }
+                return seriesCache[(symbol, tf)] = result;
+            }
+            var markets = new List<BacktestMarketData>();
+            foreach (var symbol in symbols)
+                markets.Add(new BacktestMarketData { Instrument = instruments[symbol], EntryCandles = h1BySymbol[symbol], TrendCandles = await Series(symbol, Timeframe.H4) });
 
             var dataFrom = markets.Max(m => m.EntryCandles[0].OpenTime);
             var dataTo = markets.Min(m => m.EntryCandles[^1].OpenTime);
-            // Les 30 premiers jours servent uniquement au préchauffage des indicateurs
-            var tradableFrom = dataFrom.AddDays(30);
+            // Les 60 premiers jours servent uniquement au préchauffage des indicateurs (EMA 200 en 4h ≈ 34 jours)
+            var tradableFrom = dataFrom.AddDays(60);
             if (req.Days is { } days) tradableFrom = Max(tradableFrom, DateTime.UtcNow.AddDays(-days));
             if (tradableFrom >= dataTo) throw new InvalidOperationException("Période trop courte après préchauffage des indicateurs.");
             var split = tradableFrom + TimeSpan.FromTicks((long)((dataTo - tradableFrom).Ticks * (double)trainRatio));
@@ -103,19 +118,29 @@ public sealed class BacktestService
             var defs = _registry.Definitions.Where(x => req.StrategyIds is null || req.StrategyIds.Count == 0 || req.StrategyIds.Contains(x.Id)).ToList();
             var engine = new BacktestEngine();
             var comparisons = new List<StrategyComparison>();
+            var perStrategyMarkets = new Dictionary<string, List<BacktestMarketData>>();
+            foreach (var def in defs)
+            {
+                var st = StrategyFactory.Create(def);
+                var list = new List<BacktestMarketData>();
+                foreach (var symbol in symbols)
+                    list.Add(new BacktestMarketData { Instrument = instruments[symbol], EntryCandles = await Series(symbol, st.EntryTimeframe), TrendCandles = await Series(symbol, st.TrendTimeframe) });
+                perStrategyMarkets[def.Id] = list;
+            }
             await Task.Run(() =>
             {
                 Parallel.ForEach(defs, new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1) }, def =>
                 {
                     var strategy = StrategyFactory.Create(def);
-                    var train = engine.Run(strategy, markets, new BacktestOptions { Risk = _risk, SpreadPct = _settings.SpreadPct, TradeFromUtc = tradableFrom, TradeToUtc = split });
-                    var valid = engine.Run(strategy, markets, new BacktestOptions { Risk = _risk, SpreadPct = _settings.SpreadPct, TradeFromUtc = split, TradeToUtc = dataTo.AddHours(1) });
-                    lock (comparisons) comparisons.Add(new StrategyComparison(def.Id, def.Name, def.Parameters, train, valid));
+                    var m = perStrategyMarkets[def.Id];
+                    var train = engine.Run(strategy, m, new BacktestOptions { Risk = _risk, SpreadPct = _settings.SpreadPct, TradeFromUtc = tradableFrom, TradeToUtc = split });
+                    var valid = engine.Run(strategy, m, new BacktestOptions { Risk = _risk, SpreadPct = _settings.SpreadPct, TradeFromUtc = split, TradeToUtc = dataTo.AddHours(1) });
+                    lock (comparisons) comparisons.Add(new StrategyComparison(def.Id, def.Name, def.ActiveParameters, train, valid));
                 });
             }, ct);
             comparisons = defs.Select(d => comparisons.First(c => c.StrategyId == d.Id)).ToList();
 
-            if (source == "binance") notes.Add("Données Binance (BTC/EUR, ETH/EUR) : proches de Kraken mais pas identiques. Les résultats sont indicatifs.");
+            if (source == "binance" && _md.Name != "Binance") notes.Add("Données Binance alors que le bot trade sur une autre plateforme : prix très proches mais pas identiques.");
             notes.Add("Biais du survivant : seuls BTC et ETH sont testés, deux actifs qui ont survécu et dominé le marché ; les résultats ne se généralisent pas à d'autres cryptomonnaies.");
             notes.Add("Aucun résultat passé ne garantit les résultats futurs. Une variante n'est crédible que si elle reste positive sur la période de validation.");
             if (comparisons.All(c => c.Train.Metrics.Trades + c.Validation.Metrics.Trades < 30))
@@ -137,7 +162,8 @@ public sealed class BacktestService
     {
         var inv = _repo.GetCandleInventory();
         long Count(string src) => symbols.Select(s => inv.Where(i => i.Source == src && i.Symbol == s && i.Tf == 60).Sum(i => i.Count)).DefaultIfEmpty(0).Min();
-        return Count("binance") > Count(TradingEngine.SourceName) ? "binance" : TradingEngine.SourceName;
+        var own = _md.Name.ToLowerInvariant();
+        return Count("binance") >= Count(own) ? "binance" : own;
     }
 
     private static int CountGaps(IReadOnlyList<Candle> c)

@@ -4,9 +4,12 @@ Ce guide explique comment utiliser MNBot au quotidien, sans écrire de code.
 
 ## 1. Le principe en deux phrases
 
-Toutes les heures, à la clôture d'une bougie, le bot vérifie si BTC/EUR ou ETH/EUR remplissent toutes les
-conditions d'achat de la stratégie. Si c'est le cas **et** que les règles de risque l'autorisent, il achète,
-place un stop-loss et un objectif, puis surveille la position toutes les 10 secondes jusqu'à la revente.
+Toutes les 4 heures, à la clôture d'une bougie, le bot vérifie si BTC/EUR ou ETH/EUR cassent leur plus haut des
+20 dernières bougies alors que la tendance de fond est haussière. Si c'est le cas **et** que les règles de risque
+l'autorisent, il achète sur Binance, place un stop-loss, puis surveille la position toutes les 10 secondes. Il revend
+quand le prix passe sous le plus bas des 10 dernières bougies, touche le stop-loss ou atteint l'objectif.
+Attendez-vous à peu de transactions (environ 3 par mois) et à davantage de petites pertes que de gains :
+ce sont quelques grosses tendances qui font le résultat.
 
 Par défaut, tout se passe **en simulation** (« paper trading ») : les prix sont réels, l'argent ne l'est pas.
 
@@ -17,7 +20,7 @@ Capital total, capital disponible, gains/pertes du jour, de la semaine et depuis
 courbe du capital, prix des marchés surveillés et dernières alertes.
 
 ### Trading
-- Graphique en chandeliers (1h ou 4h) avec les moyennes mobiles (EMA 20 en jaune, EMA 50 en bleu, EMA 200 en violet sur le 4h)
+- Graphique en chandeliers (1h, 4h ou 1 jour) avec les moyennes mobiles (EMA 20 en jaune, EMA 50 en bleu, EMA 200 en violet)
   et le RSI en dessous. Les achats et ventes passés apparaissent sous forme de flèches ; une position ouverte affiche
   ses lignes d'entrée, de stop (rouge) et d'objectif (vert).
 - **Dernière analyse de la stratégie** : la liste des conditions, cochées ✔ ou non ✘, avec les valeurs exactes.
@@ -85,14 +88,14 @@ Créez un bot Telegram (avec @BotFather), récupérez votre identifiant de discu
 ## 5. Questions fréquentes
 
 **Le bot ne fait aucune transaction, est-ce normal ?**
-Oui. La stratégie n'achète que lorsque *toutes* les conditions sont réunies, et seulement en tendance haussière.
-De plus, avec 100 € et des frais de 0,40 % par ordre, beaucoup de signaux sont refusés car les frais mangeraient
-une grande partie du gain. L'écran Trading montre en permanence quelles conditions manquent.
+Oui. La stratégie n'achète qu'en tendance haussière et sur une cassure : en marché baissier ou sans direction,
+elle peut rester plusieurs semaines sans rien faire. C'est voulu. L'écran Trading montre en permanence quelles
+conditions manquent.
 
 **Que se passe-t-il si le serveur redémarre ?**
 Le bot reprend automatiquement : positions ouvertes, soldes simulés et historique sont conservés dans la base.
 
-**Que se passe-t-il si Kraken ne répond plus ?**
+**Que se passe-t-il si Binance ne répond plus ?**
 Après 5 erreurs consécutives, les nouveaux achats sont suspendus et une alerte est émise. Ils reprennent automatiquement
 quand la connexion revient.
 

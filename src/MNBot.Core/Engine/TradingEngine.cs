@@ -22,7 +22,8 @@ public sealed record SymbolState(
 /// </summary>
 public sealed class TradingEngine
 {
-    public const string SourceName = "kraken";
+    /// <summary>Nom de la source de données (ex. "binance"), utilisé pour stocker les bougies.</summary>
+    public string Source => _md.Name.ToLowerInvariant();
 
     private readonly BotSettings _bot;
     private readonly RiskManager _risk;
@@ -37,8 +38,7 @@ public sealed class TradingEngine
 
     private readonly ConcurrentDictionary<string, InstrumentSpec> _instruments = new();
     private readonly ConcurrentDictionary<string, Ticker> _tickers = new();
-    private readonly ConcurrentDictionary<string, List<Candle>> _entryCandles = new();
-    private readonly ConcurrentDictionary<string, List<Candle>> _trendCandles = new();
+    private readonly ConcurrentDictionary<(string Symbol, Timeframe Tf), List<Candle>> _candles = new();
     private readonly ConcurrentDictionary<string, DateTime> _lastEvaluatedCandle = new();
     private readonly ConcurrentDictionary<string, (StrategyEvaluation Eval, string StrategyId, DateTime Time)> _lastEval = new();
     private readonly ConcurrentDictionary<string, string> _pauseReasons = new();
@@ -90,8 +90,7 @@ public sealed class TradingEngine
 
     public IReadOnlyList<Candle> GetCachedCandles(string symbol, Timeframe tf)
     {
-        var dict = tf == Timeframe.H4 ? _trendCandles : _entryCandles;
-        return dict.TryGetValue(symbol, out var l) ? l.ToList() : Array.Empty<Candle>();
+        return _candles.TryGetValue((symbol, tf), out var l) ? l.ToList() : Array.Empty<Candle>();
     }
 
     public Ticker? GetTicker(string symbol) => _tickers.TryGetValue(symbol, out var t) ? t : null;
@@ -108,13 +107,15 @@ public sealed class TradingEngine
             var spec = await _md.GetInstrumentAsync(symbol, ct);
             _instruments[symbol] = spec;
             // Historique déjà stocké : permet de redémarrer sans perte
-            var stored1h = await _repo.GetCandlesAsync(SourceName, symbol, Timeframe.H1, _clock.UtcNow.AddDays(-60));
-            var stored4h = await _repo.GetCandlesAsync(SourceName, symbol, Timeframe.H4, _clock.UtcNow.AddDays(-200));
-            _entryCandles[symbol] = stored1h.ToList();
-            _trendCandles[symbol] = stored4h.ToList();
+            foreach (var tf in RequiredTimeframes())
+            {
+                var stored = await _repo.GetCandlesAsync(Source, symbol, tf, _clock.UtcNow - tf.ToTimeSpan() * KeepCandles);
+                _candles[(symbol, tf)] = stored.ToList();
+            }
             // Évite de réévaluer (et de rejouer) la même bougie après un redémarrage
-            if (await _repo.GetStateAsync(LastEvalKey(symbol)) is { } last && DateTime.TryParse(last, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastEval))
-                _lastEvaluatedCandle[symbol] = DateTime.SpecifyKind(lastEval, DateTimeKind.Utc);
+            foreach (var def in _strategies.Definitions)
+                if (await _repo.GetStateAsync(LastEvalKey(symbol, def.Id)) is { } last && DateTime.TryParse(last, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastEval))
+                    _lastEvaluatedCandle[$"{symbol}|{def.Id}"] = DateTime.SpecifyKind(lastEval, DateTimeKind.Utc);
         }
 
         _open = (await _repo.GetOpenPositionsAsync(_venue.Mode)).ToList();
@@ -160,7 +161,14 @@ public sealed class TradingEngine
     }
 
     public const string LiveConfirmationKey = "live_confirmed_at";
-    private static string LastEvalKey(string symbol) => "last_eval:" + symbol;
+    private static string LastEvalKey(string symbol, string strategyId) => $"last_eval:{symbol}:{strategyId}";
+    private const int KeepCandles = 1000;
+
+    /// <summary>Unités de temps nécessaires à l'ensemble des stratégies déclarées.</summary>
+    private IReadOnlyList<Timeframe> RequiredTimeframes() => _strategies.Definitions
+        .Select(d => _strategies.Get(d.Id))
+        .SelectMany(st => new[] { st.EntryTimeframe, st.TrendTimeframe })
+        .Distinct().OrderBy(t => t).ToList();
 
     // ------------------------------------------------------------------ commandes
 
@@ -331,15 +339,13 @@ public sealed class TradingEngine
         {
             try
             {
-                foreach (var tf in new[] { Timeframe.H1, Timeframe.H4 })
+                foreach (var tf in RequiredTimeframes())
                 {
                     var fresh = await _md.GetCandlesAsync(symbol, tf, null, ct);
                     var closed = fresh.Where(c => c.CloseTime(tf) <= now).ToList();
-                    await _repo.UpsertCandlesAsync(SourceName, symbol, tf, closed);
-                    var dict = tf == Timeframe.H1 ? _entryCandles : _trendCandles;
-                    var merged = Merge(dict.GetValueOrDefault(symbol) ?? new List<Candle>(), closed);
-                    var keep = tf == Timeframe.H1 ? 1000 : 800;
-                    dict[symbol] = merged.Count > keep ? merged.GetRange(merged.Count - keep, keep) : merged;
+                    await _repo.UpsertCandlesAsync(Source, symbol, tf, closed);
+                    var merged = Merge(_candles.GetValueOrDefault((symbol, tf)) ?? new List<Candle>(), closed);
+                    _candles[(symbol, tf)] = merged.Count > KeepCandles ? merged.GetRange(merged.Count - KeepCandles, KeepCandles) : merged;
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
@@ -364,21 +370,23 @@ public sealed class TradingEngine
         var now = _clock.UtcNow;
         foreach (var symbol in _bot.Symbols)
         {
-            var entry = _entryCandles.GetValueOrDefault(symbol);
-            var trend = _trendCandles.GetValueOrDefault(symbol);
-            if (entry is null || entry.Count == 0 || trend is null) continue;
-            var lastClosed = entry[^1];
-            if (_lastEvaluatedCandle.TryGetValue(symbol, out var done) && done >= lastClosed.OpenTime) continue;
-            _lastEvaluatedCandle[symbol] = lastClosed.OpenTime;
-            await _repo.SetStateAsync(LastEvalKey(symbol), lastClosed.OpenTime.ToString("O"));
-
             var position = _open.FirstOrDefault(p => p.Symbol == symbol);
+            // Position ouverte : seule la stratégie qui l'a ouverte décide de la sortie (jamais de renforcement).
             var strategies = position is not null && _strategies.Exists(position.StrategyId)
                 ? new List<IStrategy> { _strategies.Get(position.StrategyId) }
                 : _strategies.Enabled.ToList();
 
             foreach (var strategy in strategies)
             {
+                var entry = _candles.GetValueOrDefault((symbol, strategy.EntryTimeframe));
+                var trend = _candles.GetValueOrDefault((symbol, strategy.TrendTimeframe)) ?? new List<Candle>();
+                if (entry is null || entry.Count == 0) continue;
+                var lastClosed = entry[^1];
+                var key = $"{symbol}|{strategy.Id}";
+                if (_lastEvaluatedCandle.TryGetValue(key, out var done) && done >= lastClosed.OpenTime) continue;
+                _lastEvaluatedCandle[key] = lastClosed.OpenTime;
+                await _repo.SetStateAsync(LastEvalKey(symbol, strategy.Id), lastClosed.OpenTime.ToString("O"));
+
                 var ctx = new StrategyContext(symbol, entry, trend, position, now);
                 var eval = strategy.Evaluate(ctx);
                 _lastEval[symbol] = (eval, strategy.Id, now);
@@ -393,8 +401,8 @@ public sealed class TradingEngine
                 if (eval.Action == SignalAction.ExitLong && position is not null)
                 {
                     await ClosePositionAsync(position, eval.Reason, ct);
-                    record.Outcome = "Position fermée";
-                    position = null;
+                    if (position.Status == PositionStatus.Closed) { record.Outcome = "Position fermée"; position = null; }
+                    else { record.Outcome = "Échec de la vente : nouvelle tentative au prochain cycle"; _lastEvaluatedCandle.TryRemove(key, out _); }
                 }
                 else if (eval.Action == SignalAction.EnterLong && position is null)
                 {

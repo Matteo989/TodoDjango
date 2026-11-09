@@ -83,7 +83,7 @@ function Shell({ authEnabled }: { authEnabled: boolean }) {
   return (
     <div className="app">
       <nav className="sidebar">
-        <div className="brand">{Logo}<div>MNBot<small>Kraken · Spot</small></div></div>
+        <div className="brand">{Logo}<div>MNBot<small>{status?.exchange ?? "…"} · Spot</small></div></div>
         {PAGES.map((p) => (
           <button key={p.id} className={`nav-item ${p.id === page ? "active" : ""}`} onClick={() => go(p.id)}>
             {p.icon}<span>{p.label}</span>

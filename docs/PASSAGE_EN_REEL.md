@@ -10,7 +10,7 @@ Le bot ne passe **jamais** en réel tout seul. Il faut ouvrir quatre verrous ind
 |---|---|---|
 | 1. `"Mode": "Live"` | `config/mnbot.json` | Le bot reste en simulation. |
 | 2. `MNBOT_LIVE_TRADING_ENABLED=true` | `.env` | Le programme refuse de démarrer. |
-| 3. Clés API Kraken | `.env` | Le programme refuse de démarrer. |
+| 3. Clés API Binance (ou Kraken) | `.env` | Le programme refuse de démarrer. |
 | 4. Confirmation écrite | Dashboard → Journal & réglages | Aucun ordre réel n'est envoyé. |
 
 De plus, en mode réel, le moteur **démarre toujours arrêté** : il faut cliquer sur « Démarrer ».
@@ -22,21 +22,24 @@ La confirmation écrite n'est acceptée que si la validation du paper trading es
 Dans **Journal & réglages**, la carte « Validation avant trading réel » doit afficher ✔. Regardez aussi l'écran
 Backtesting : la variante utilisée doit être positive sur la période de **validation**.
 
-## Étape 2 — Créer une clé API Kraken (sans droit de retrait)
+## Étape 2 — Créer une clé API Binance (sans droit de retrait)
 
-1. Kraken → *Settings* → *API* → *Create API key*.
+1. Binance → *Profil* → *Gestion des API* → *Créer une API* → *Clé générée par le système*.
 2. Cochez **uniquement** :
-   - *Funds permissions* : **Query Funds**
-   - *Orders and trades* : **Query Open Orders & Trades**, **Query Closed Orders & Trades**, **Create & Modify Orders**
-3. **Ne cochez JAMAIS** *Withdraw Funds* (retraits). Les autres permissions (dépôts, staking, export…) sont inutiles : laissez-les décochées.
-4. Si possible, limitez la clé à l'adresse IP de votre VPS (*IP whitelist*).
-5. Copiez la clé et le secret privé.
+   - **Enable Reading** (lecture) ;
+   - **Enable Spot & Margin Trading** (trading au comptant). Le bot n'utilise jamais la marge ni l'emprunt.
+3. **Ne cochez JAMAIS** *Enable Withdrawals* (retraits), ni *Enable Margin Loan*, *Futures*, *Universal Transfer*.
+4. Choisissez **Restrict access to trusted IPs only** et indiquez l'adresse IP de votre VPS.
+5. Copiez la clé et le secret (le secret n'est affiché qu'une fois).
+
+Conseil : si vous détenez du BNB et activez « payer les frais en BNB », les frais passent de 0,10 % à 0,075 %.
+Le bot reste prudent et compte 0,10 % dans ses calculs.
 
 ## Étape 3 — Renseigner `.env`
 
 ```
-KRAKEN_API_KEY=votre_cle
-KRAKEN_API_SECRET=votre_secret
+BINANCE_API_KEY=votre_cle
+BINANCE_API_SECRET=votre_secret
 MNBOT_LIVE_TRADING_ENABLED=true
 MNBOT_DASHBOARD_PASSWORD=un_mot_de_passe_solide
 ```
@@ -45,14 +48,17 @@ Le fichier `.env` doit rester privé (`chmod 600 .env`). Ne l'envoyez jamais à 
 
 ## Étape 4 — Essai à blanc (recommandé)
 
-Dans `config/mnbot.json`, section `Kraken`, mettez `"ValidateOrdersOnly": true` et `"Mode": "Live"` dans `Bot`.
-Redémarrez. Les ordres seront **vérifiés par Kraken sans être exécutés** : cela permet de valider les clés et les
+Dans `config/mnbot.json`, section `Binance`, mettez `"ValidateOrdersOnly": true`, et `"Mode": "Live"` dans `Bot`.
+Redémarrez. Les ordres seront **vérifiés par Binance sans être exécutés** : cela permet de valider les clés et les
 permissions. Les tentatives apparaissent dans « Ordres envoyés » avec la mention « Mode validation ».
 
 ## Étape 5 — Activer
 
-1. Approvisionnez le compte Kraken avec le capital prévu (100 €). Le bot garde toujours 30 € de côté.
-2. `config/mnbot.json` : `"Mode": "Live"` et `"ValidateOrdersOnly": false`.
+1. Placez le capital prévu **en EUR** sur votre portefeuille Spot Binance (100 €). Le bot n'engage jamais plus de 70 €,
+   même si le solde EUR est plus élevé, et ne revend que les quantités qu'il a lui-même achetées : vos autres
+   cryptomonnaies ne sont pas touchées. Pour un suivi plus lisible, l'idéal reste de n'avoir sur le portefeuille Spot
+   que l'argent destiné au bot (les montants affichés dans le dashboard partent du principe que le solde EUR vaut ~100 €).
+2. `config/mnbot.json` : `"Mode": "Live"` et, dans `Binance`, `"ValidateOrdersOnly": false`.
 3. Redémarrez le bot.
 4. Dashboard → **Journal & réglages** → tapez `JE CONFIRME LE TRADING REEL` et votre mot de passe → *Confirmer*.
 5. Dashboard → **Démarrer**.
@@ -66,9 +72,10 @@ bloque le bot.
 
 ## Limites connues du mode réel (à lire)
 
-- Le connecteur d'ordres réels a été écrit selon la documentation Kraken et sa signature est vérifiée par un test
-  automatique, mais il **n'a pas pu être testé avec un vrai compte** pendant le développement. L'étape 4 (essai à blanc)
-  sert précisément à le vérifier, puis surveillez de près les premières transactions.
+- Les connecteurs d'ordres réels (Binance et Kraken) ont été écrits selon la documentation officielle et leur signature
+  est vérifiée par un test automatique sur l'exemple publié, mais ils **n'ont pas pu être testés avec un vrai compte**
+  pendant le développement. L'étape 4 (essai à blanc) sert précisément à le vérifier ; surveillez ensuite de près les
+  premières transactions.
 - Le stop-loss et l'objectif sont surveillés par le bot toutes les 10 secondes. Si le serveur est éteint, ils ne sont
   plus surveillés : gardez le bot sur un VPS fiable.
-- Les ordres sont « au marché » : frais Kraken de 0,40 % par ordre au palier de départ.
+- Les ordres sont « au marché » : frais Binance de 0,10 % par ordre (0,40 % sur Kraken, ce qui rend la stratégie non rentable).

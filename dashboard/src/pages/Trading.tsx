@@ -1,4 +1,10 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
+
+const INDICATOR_LABELS: Record<string, string> = {
+  close: "Clôture", ema20: "EMA 20", ema50: "EMA 50", ema200_4h: "EMA 200 (tendance)", rsi14: "RSI 14", atr14: "ATR 14",
+  volume: "Volume", volumeAvg20: "Volume moyen", close4h: "Clôture tendance", emaFast: "EMA rapide", emaSlow: "EMA lente",
+  emaTrend: "EMA 200 (filtre)", channelHigh: "Plus haut à casser", channelLow: "Plus bas de sortie", trailingStop: "Stop suiveur",
+};
 import type { SeriesMarker, Time, UTCTimestamp } from "lightweight-charts";
 import { api, usePoll } from "../api";
 import { Card, Checks, Empty, ErrorNote, ActionButton } from "../components/ui";
@@ -8,7 +14,7 @@ import { fmtPrice, fmtDate, fmtQty, fmtSigned, fmtEur, fmtNum, tone, ago } from 
 export default function Trading() {
   const { data: symbols } = usePoll<any[]>("/market/symbols", 10000, ["tickers", "signal"]);
   const [symbol, setSymbol] = useState("BTC/EUR");
-  const [tf, setTf] = useState("1h");
+  const [tf, setTf] = useState("4h");
   const { data: chart, error } = usePoll<CandleData>(`/market/candles?symbol=${encodeURIComponent(symbol)}&tf=${tf}`, 60000, ["candles"]);
   const { data: positions, reload: reloadPositions } = usePoll<any[]>("/positions", 10000, ["position", "tickers"]);
   const { data: trades } = usePoll<any[]>("/trades?limit=100", 30000, ["position"]);
@@ -25,8 +31,9 @@ export default function Trading() {
   ] : [], [position]);
 
   const markers = useMemo<SeriesMarker<Time>[]>(() => {
-    if (!trades || tf !== "1h") return [];
-    const hour = (s: string) => (Math.floor(new Date(s).getTime() / 3600000) * 3600) as UTCTimestamp;
+    if (!trades) return [];
+    const step = tf === "1d" ? 86400 : tf === "4h" ? 14400 : 3600;
+    const hour = (s: string) => (Math.floor(new Date(s).getTime() / 1000 / step) * step) as UTCTimestamp;
     const m: SeriesMarker<Time>[] = [];
     trades.filter((t) => t.symbol === symbol).forEach((t) => {
       m.push({ time: hour(t.entryTimeUtc), position: "belowBar", color: "#26a69a", shape: "arrowUp", text: "Achat" });
@@ -53,15 +60,13 @@ export default function Trading() {
               <div className="small muted num">Achat {fmtPrice(s.ticker?.bid)} · Vente {fmtPrice(s.ticker?.ask)}</div>
             </button>
           ))}
-          <Card title="Indicateurs (1h)">
+          <Card title="Indicateurs de la stratégie">
             <dl className="kv">
-              <dt>EMA 20</dt><dd>{fmtPrice(ind.ema20)}</dd>
-              <dt>EMA 50</dt><dd>{fmtPrice(ind.ema50)}</dd>
-              <dt>EMA 200 (4h)</dt><dd>{fmtPrice(ind.ema200_4h)}</dd>
-              <dt>RSI 14</dt><dd>{fmtNum(ind.rsi14, 1)}</dd>
-              <dt>ATR 14</dt><dd>{fmtPrice(ind.atr14)}</dd>
-              <dt>Volume / moy.</dt><dd>{ind.volumeAvg20 ? fmtNum(ind.volume / ind.volumeAvg20, 2) + "×" : "—"}</dd>
+              {Object.entries(ind).filter(([, v]) => v != null).map(([k, v]) => (
+                <Fragment key={k}><dt>{INDICATOR_LABELS[k] ?? k}</dt><dd>{k === "rsi14" ? fmtNum(v as number, 1) : fmtPrice(v as number)}</dd></Fragment>
+              ))}
             </dl>
+            {!Object.keys(ind).length && <div className="small muted">En attente de la prochaine clôture de bougie.</div>}
           </Card>
           {book && (
             <Card title="Carnet d'ordres">
@@ -77,9 +82,9 @@ export default function Trading() {
 
         <div className="stack" style={{ gap: 14 }}>
           <Card title={`${symbol} · chandeliers ${tf}`} right={
-            <div className="tabs">{["1h", "4h"].map((x) => <button key={x} className={tf === x ? "active" : ""} onClick={() => setTf(x)}>{x}</button>)}</div>
+            <div className="tabs">{["1h", "4h", "1d"].map((x) => <button key={x} className={tf === x ? "active" : ""} onClick={() => setTf(x)}>{x}</button>)}</div>
           }>
-            <CandleChart data={chart} levels={levels} markers={markers} showEma200={tf === "4h"} height={420} />
+            <CandleChart data={chart} levels={levels} markers={markers} showEma200 height={420} />
             <RsiChart data={chart?.rsi ?? null} height={110} />
           </Card>
 
@@ -90,7 +95,7 @@ export default function Trading() {
                   <div>{current.lastEvaluation.reason}</div>
                   <Checks checks={current.lastEvaluation.checks} />
                 </div>
-              ) : <Empty>En attente de la prochaine clôture de bougie 1h.</Empty>}
+              ) : <Empty>En attente de la prochaine clôture de bougie.</Empty>}
             </Card>
             <Card title="Position ouverte">
               {position ? (
@@ -128,7 +133,7 @@ export default function Trading() {
               </tr>
             ))}</tbody>
           </table></div>
-        ) : <Empty>Les évaluations apparaissent à chaque clôture de bougie 1h.</Empty>}
+        ) : <Empty>Les évaluations apparaissent à chaque clôture de bougie (toutes les 4 heures pour la stratégie active).</Empty>}
       </Card>
 
       <Card title="Historique des transactions" flush>

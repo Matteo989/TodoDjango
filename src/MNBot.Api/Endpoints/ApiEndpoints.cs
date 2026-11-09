@@ -145,12 +145,16 @@ public static class ApiEndpoints
             instrument = e.Instruments.GetValueOrDefault(s.Symbol),
         })));
 
-        api.MapGet("/market/candles", async (string symbol, string? tf, TradingEngine e, SqliteRepository repo) =>
+        api.MapGet("/market/candles", async (string symbol, string? tf, TradingEngine e, IMarketDataProvider md) =>
         {
-            var timeframe = TimeframeExtensions.Parse(tf ?? "1h");
+            var timeframe = TimeframeExtensions.Parse(tf ?? "4h");
             if (!e.BotSettings.Symbols.Contains(symbol)) throw new ArgumentException("Actif non surveillé.");
             var candles = e.GetCachedCandles(symbol, timeframe);
-            if (candles.Count == 0) candles = await repo.GetCandlesAsync(TradingEngine.SourceName, symbol, timeframe, DateTime.UtcNow.AddDays(timeframe == Timeframe.H4 ? -150 : -40));
+            if (candles.Count < 50)
+            {
+                var now = DateTime.UtcNow;
+                candles = (await md.GetCandlesAsync(symbol, timeframe)).Where(c => c.CloseTime(timeframe) <= now).ToList();
+            }
             var closes = candles.Select(c => c.Close).ToArray();
             var ema20 = Ta.Ema(closes, 20); var ema50 = Ta.Ema(closes, 50); var ema200 = Ta.Ema(closes, 200);
             var rsi = Ta.Rsi(closes, 14);
@@ -223,15 +227,16 @@ public static class ApiEndpoints
         });
 
         // ------------------------------------------------------------ configuration
-        api.MapGet("/config", (TradingEngine e, BacktestSettings bt, AiSettings ai, AppPaths paths, KrakenOptions k) => Results.Ok(new
+        api.MapGet("/config", (TradingEngine e, BacktestSettings bt, AiSettings ai, AppPaths paths, KrakenOptions k, MNBot.Exchanges.Binance.BinanceOptions b) => Results.Ok(new
         {
             configFile = paths.Config,
             bot = e.BotSettings,
             risk = e.RiskSettings,
-            strategies = e.Strategies.Definitions.Select(d => new { d.Id, d.Name, d.Type, enabled = e.Strategies.IsEnabled(d.Id), d.Parameters }),
+            strategies = e.Strategies.Definitions.Select(d => new { d.Id, d.Name, d.Type, enabled = e.Strategies.IsEnabled(d.Id), parameters = d.ActiveParameters }),
             backtest = bt,
             ai = new { ai.Enabled, ai.Model },
             kraken = new { k.BaseUrl, k.ValidateOrdersOnly, credentialsConfigured = k.HasCredentials },
+            binance = new { b.ApiUrl, b.MarketDataUrl, b.ValidateOrdersOnly, credentialsConfigured = b.HasCredentials },
         }));
 
         // ------------------------------------------------------------ analyse (IA)

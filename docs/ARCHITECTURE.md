@@ -18,9 +18,11 @@
 | Projet | Rôle |
 |---|---|
 | `src/MNBot.Core` | Cœur indépendant de toute plateforme : modèles, indicateurs, stratégies, risque, exécution simulée, backtest, moteur, analyse. |
+| `src/MNBot.Exchanges.Binance` | Connecteur Binance (plateforme par défaut) : données publiques, signature HMAC-SHA256, exécution réelle. |
 | `src/MNBot.Exchanges.Kraken` | Connecteur Kraken : données publiques, signature des requêtes privées, exécution réelle. |
 | `src/MNBot.Api` | Hébergement : configuration, SQLite, API REST, WebSocket, services (backtest, historique, IA, Telegram). |
-| `tests/MNBot.Tests` | 48 tests xUnit (indicateurs, stratégie, absence de look-ahead, risque, backtest, moteur, Kraken). |
+| `tests/MNBot.Tests` | 62 tests xUnit (indicateurs, stratégies, absence de look-ahead, risque, backtest, moteur, Binance, Kraken). |
+| `tools/MNBot.Research` | Banc de recherche : compare des stratégies sur 9 ans d'historique, avec variation des paramètres. |
 | `dashboard` | Interface React + TypeScript + Vite, graphiques TradingView Lightweight Charts. |
 
 ### Choix techniques
@@ -39,7 +41,21 @@ Le moteur ne connaît que des interfaces : `IMarketDataProvider` (données), `IE
 `IStrategy`. Ajouter des actions, ETF, Forex ou indices consiste à écrire un nouveau connecteur qui implémente ces
 interfaces (`AssetClass` est déjà prévu), sans modifier le moteur.
 
-## Stratégie Trend Following + Pullback
+## Stratégie active : cassure 20 bougies 4h (suivi de tendance)
+
+Évaluée à la clôture de chaque bougie 4h (toutes les 4 heures), uniquement sur des bougies clôturées :
+
+| Règle | Détail |
+|---|---|
+| Achat | la clôture dépasse le plus haut des 20 bougies 4h précédentes **et** est au-dessus de l'EMA 200 (4h) |
+| Stop de protection | 3 ATR sous le prix d'entrée (sert aussi à calculer la taille : perte au stop ≤ 0,50 €) |
+| Objectif | 3 fois le risque |
+| Sortie de tendance | la clôture passe sous le plus bas des 10 bougies 4h précédentes |
+
+Profil attendu : environ 35 à 45 % de trades gagnants, des petites pertes fréquentes et quelques gains de 2 à 3 fois
+le risque. C'est ce profil qui résiste le mieux aux frais.
+
+## Ancienne stratégie : Trend Following + Pullback (désactivée)
 
 Évaluée à la clôture de chaque bougie 1h, avec uniquement des bougies clôturées :
 
@@ -97,6 +113,42 @@ Jamais de renforcement d'une position, jamais de vente à découvert.
 - Aucune variante n'est démontrée rentable à ce stade. Pistes à tester par backtest avant tout usage : ordres
   limites (frais *maker* de 0,25 %), unités de temps plus longues (4h/1j) où les mouvements dépassent largement les frais,
   palier de frais Kraken plus bas.
+
+## Recherche de stratégie (novembre 2026)
+
+Banc de recherche : `dotnet run --project tools/MNBot.Research -- data/mnbot.db 0.001 0.5` (frais, risque par trade).
+Données Binance 1h d'octobre 2017 à novembre 2026, bougies 4h et 1j reconstruites. Frais 0,10 %, glissement 0,05 %,
+demi-spread 0,025 % par ordre, capital 100, risque 0,50 par trade, une position à la fois, BTC + ETH.
+Huit stratégies déclarées **avant** de regarder les résultats ; choix sur 2018-2022, contrôle sur 2023-2026.
+
+| Stratégie | 2018-2022 (USDT) | 2023-2026 (USDT) | 2023-2026 (EUR) |
+|---|---|---|---|
+| A · Pullback 1h/4h (ancienne) | 228 trades, −19,38 | 123 trades, −5,50 | 136 trades, −11,39 |
+| B · Pullback 4h/1j | 46 trades, +2,31 | 54 trades, −5,34 | 56 trades, −5,74 |
+| C · Cassure 20 jours | 3 trades, +4,25 | 15 trades, +1,48 | 14 trades, +2,16 |
+| D · Cassure 55 jours | 3 trades, +2,33 | 11 trades, +2,14 | 8 trades, +3,23 |
+| **E · Cassure 20 bougies 4h** | **137 trades, +26,80 (PF 2,09)** | **136 trades, +12,47 (PF 1,48)** | **130 trades, +12,37 (PF 1,49)** |
+| F · Croisement EMA 20/50 (1j) | 1 trade | 6 trades, +1,73 | 9 trades, +2,64 |
+| G · Croisement EMA 10/30 (1j) | 2 trades | 7 trades, +1,34 | 8 trades, +2,76 |
+| H · Cassure 20 jours sans filtre | 5 trades, +3,38 | 18 trades, +3,61 | 19 trades, +2,72 |
+
+*PF = profit factor (gains bruts ÷ pertes brutes).* Les stratégies journalières (C, D, F, G, H) font trop peu de
+transactions pour conclure : avec un stop large et 0,50 € de risque, beaucoup de positions tombent sous le minimum
+de 5 € de Binance.
+
+**Robustesse de E** : 36 variantes voisines (cassure sur 15/20/30 bougies, sortie sur 5/10/15, avec ou sans stop
+suiveur) sont **toutes** positives sur les trois périodes (PF entre 1,21 et 2,09). Détail par année (EUR) :
+2023 +8,40 · 2024 +1,79 · 2025 +1,92 · 2026 +0,32 (jusqu'au 9 novembre).
+
+**Effet des frais sur E** (2023-2026, EUR) : 0,10 % → +12,37 · 0,25 % → +6,78 · 0,40 % → +2,16 (négatif depuis 2024).
+D'où le passage sur Binance.
+
+**Ce qu'il faut en retenir honnêtement :**
+- Résultat attendu au réglage actuel : environ **+3 à +6 € par an** pour 100 €, avec des baisses temporaires de 5 €.
+  Les gains et les pertes sont proportionnels au risque par trade (`RiskPerTrade`) : doubler ce risque double les deux.
+- Sur 2023-2026, simplement acheter et conserver du BTC a rapporté beaucoup plus (+333 %) ; en contrepartie, la
+  stratégie reste hors du marché pendant les baisses (BTC a perdu plus de 70 % en 2018 puis en 2022).
+- Le passé ne garantit pas l'avenir : la validation en simulation (30 jours minimum) reste obligatoire.
 
 ## Sécurité
 

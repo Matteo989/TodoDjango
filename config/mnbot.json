@@ -1,114 +1,164 @@
 {
   "Bot": {
     "Mode": "Paper",
-    "Exchange": "Kraken",
-    "Symbols": [ "BTC/EUR", "ETH/EUR" ],
+    "Exchange": "Binance",
+    "Symbols": [
+      "BTC/EUR",
+      "ETH/EUR"
+    ],
     "LoopIntervalSeconds": 10,
     "CandleRefreshSeconds": 60,
-    "SignalMaxAgeMinutes": 15,
+    "SignalMaxAgeMinutes": 20,
     "AutoStartPaper": true,
     "PaperValidationMinDays": 30,
     "PaperValidationMinTrades": 20,
     "AllowLiveWithoutValidation": false
   },
-
   "Risk": {
     "InitialCapital": 100.0,
     "MaxTradingCapital": 70.0,
     "Reserve": 20.0,
     "SafetyMargin": 10.0,
-    "RiskPerTrade": 0.50,
-    "MaxDailyLoss": 1.50,
-    "MaxWeeklyLoss": 3.00,
+    "RiskPerTrade": 0.5,
+    "MaxDailyLoss": 1.5,
+    "MaxWeeklyLoss": 3.0,
     "MaxOpenPositions": 1,
-    "TakerFeeRate": 0.0040,
+    "TakerFeeRate": 0.001,
     "SlippageRate": 0.0005,
     "MinNetRewardRisk": 1.3,
-    "MaxFeeShareOfReward": 0.40,
+    "MaxFeeShareOfReward": 0.4,
     "MaxSpreadPct": 0.003,
     "TimeZone": "Europe/Paris",
     "MaxTickerAgeSeconds": 60,
     "MaxPriceJumpPct": 0.08,
     "MaxConsecutiveApiErrors": 5
   },
-
   "Strategies": [
     {
-      "Id": "trend-pullback",
-      "Name": "Trend Pullback (référence : stop 1,5 ATR, objectif 2R)",
-      "Type": "TrendPullback",
+      "Id": "breakout-4h",
+      "Name": "Cassure 20 bougies 4h (active)",
+      "Type": "TrendFollowing",
       "Enabled": true,
-      "Parameters": {
-        "EmaFast": 20, "EmaSlow": 50, "EmaTrend": 200,
-        "RsiPeriod": 14, "RsiThreshold": 50, "RsiCrossLookback": 1,
-        "AtrPeriod": 14, "VolumePeriod": 20, "VolumeMultiplier": 1.0, "RequireVolumeConfirmation": true,
-        "PullbackLookback": 5, "PullbackTolerancePct": 0.2,
-        "StopAtrMultiplier": 1.5, "RewardRiskRatio": 2.0, "ExitOnTrendBreak": true
+      "Trend": {
+        "Mode": "Breakout",
+        "Timeframe": "4h",
+        "EntryLookback": 20,
+        "ExitLookback": 10,
+        "EmaFast": 20,
+        "EmaSlow": 50,
+        "EmaTrend": 200,
+        "AtrPeriod": 14,
+        "StopAtrMultiplier": 3.0,
+        "TrailingAtrMultiplier": 0,
+        "NominalRewardRisk": 3.0
       }
     },
     {
-      "Id": "tp-wide",
-      "Name": "Variante stop 3 ATR, objectif 2R",
-      "Type": "TrendPullback",
+      "Id": "breakout-4h-30",
+      "Name": "Variante cassure 30 bougies 4h",
+      "Type": "TrendFollowing",
       "Enabled": false,
-      "Parameters": {
-        "EmaFast": 20, "EmaSlow": 50, "EmaTrend": 200,
-        "RsiPeriod": 14, "RsiThreshold": 50, "RsiCrossLookback": 1,
-        "AtrPeriod": 14, "VolumePeriod": 20, "VolumeMultiplier": 1.0, "RequireVolumeConfirmation": true,
-        "PullbackLookback": 5, "PullbackTolerancePct": 0.2,
-        "StopAtrMultiplier": 3.0, "RewardRiskRatio": 2.0, "ExitOnTrendBreak": true
+      "Trend": {
+        "Mode": "Breakout",
+        "Timeframe": "4h",
+        "EntryLookback": 30,
+        "ExitLookback": 10,
+        "EmaFast": 20,
+        "EmaSlow": 50,
+        "EmaTrend": 200,
+        "AtrPeriod": 14,
+        "StopAtrMultiplier": 3.0,
+        "TrailingAtrMultiplier": 0,
+        "NominalRewardRisk": 3.0
       }
     },
     {
-      "Id": "tp-wide-rr3",
-      "Name": "Variante stop 3 ATR, objectif 3R, sans sortie anticipée",
-      "Type": "TrendPullback",
+      "Id": "breakout-1d-55",
+      "Name": "Variante cassure 55 jours",
+      "Type": "TrendFollowing",
       "Enabled": false,
-      "Parameters": {
-        "EmaFast": 20, "EmaSlow": 50, "EmaTrend": 200,
-        "RsiPeriod": 14, "RsiThreshold": 50, "RsiCrossLookback": 1,
-        "AtrPeriod": 14, "VolumePeriod": 20, "VolumeMultiplier": 1.0, "RequireVolumeConfirmation": true,
-        "PullbackLookback": 5, "PullbackTolerancePct": 0.2,
-        "StopAtrMultiplier": 3.0, "RewardRiskRatio": 3.0, "ExitOnTrendBreak": false
+      "Trend": {
+        "Mode": "Breakout",
+        "Timeframe": "1d",
+        "EntryLookback": 55,
+        "ExitLookback": 20,
+        "EmaFast": 20,
+        "EmaSlow": 50,
+        "EmaTrend": 200,
+        "AtrPeriod": 14,
+        "StopAtrMultiplier": 3.0,
+        "TrailingAtrMultiplier": 0,
+        "NominalRewardRisk": 3.0
       }
     },
     {
-      "Id": "tp-novol",
-      "Name": "Variante sans filtre de volume, RSI sur 3 bougies",
+      "Id": "ema-1d-20-50",
+      "Name": "Variante croisement EMA 20/50 (1j)",
+      "Type": "TrendFollowing",
+      "Enabled": false,
+      "Trend": {
+        "Mode": "EmaCross",
+        "Timeframe": "1d",
+        "EntryLookback": 20,
+        "ExitLookback": 10,
+        "EmaFast": 20,
+        "EmaSlow": 50,
+        "EmaTrend": 200,
+        "AtrPeriod": 14,
+        "StopAtrMultiplier": 3.0,
+        "TrailingAtrMultiplier": 0,
+        "NominalRewardRisk": 3.0
+      }
+    },
+    {
+      "Id": "pullback-1h",
+      "Name": "Pullback 1h/4h (ancienne référence)",
       "Type": "TrendPullback",
       "Enabled": false,
       "Parameters": {
-        "EmaFast": 20, "EmaSlow": 50, "EmaTrend": 200,
-        "RsiPeriod": 14, "RsiThreshold": 50, "RsiCrossLookback": 3,
-        "AtrPeriod": 14, "VolumePeriod": 20, "VolumeMultiplier": 1.0, "RequireVolumeConfirmation": false,
-        "PullbackLookback": 5, "PullbackTolerancePct": 0.2,
-        "StopAtrMultiplier": 1.5, "RewardRiskRatio": 2.0, "ExitOnTrendBreak": true
+        "EmaFast": 20,
+        "EmaSlow": 50,
+        "EmaTrend": 200,
+        "RsiPeriod": 14,
+        "RsiThreshold": 50,
+        "RsiCrossLookback": 1,
+        "AtrPeriod": 14,
+        "VolumePeriod": 20,
+        "VolumeMultiplier": 1.0,
+        "RequireVolumeConfirmation": true,
+        "PullbackLookback": 5,
+        "PullbackTolerancePct": 0.2,
+        "StopAtrMultiplier": 1.5,
+        "RewardRiskRatio": 2.0,
+        "ExitOnTrendBreak": true
       }
     }
   ],
-
   "Backtest": {
     "SpreadPct": 0.0005,
     "TrainRatio": 0.7,
     "DefaultHistoryDays": 730
   },
-
+  "Binance": {
+    "MarketDataUrl": "https://data-api.binance.vision",
+    "ApiUrl": "https://api.binance.com",
+    "TimeoutSeconds": 15,
+    "RecvWindowMs": 10000,
+    "ValidateOrdersOnly": false
+  },
   "Kraken": {
     "BaseUrl": "https://api.kraken.com",
     "TimeoutSeconds": 15,
     "ValidateOrdersOnly": false
   },
-
   "Server": {
     "Urls": "http://127.0.0.1:5080"
   },
-
   "Ai": {
     "Enabled": true,
     "Model": "claude-opus-5-5",
     "MaxTokens": 2000
   },
-
   "Notifications": {
     "TelegramMinLevel": "Warning"
   }

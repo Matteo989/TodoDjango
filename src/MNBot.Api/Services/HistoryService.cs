@@ -9,20 +9,20 @@ namespace MNBot.Api.Services;
 
 /// <summary>
 /// Import d'historique pour le backtesting.
-///  - "kraken" : 720 dernières bougies 1h (~30 jours) et 4h (~120 jours) via l'API publique Kraken ;
+///  - "exchange" : dernières bougies 1h/4h/1j de la plateforme connectée (Kraken : 720 bougies maximum) ;
 ///  - "binance" : historique long en 1h via l'API publique de données Binance (data-api.binance.vision),
-///    utile pour tester sur plusieurs années. Les prix diffèrent très légèrement de Kraken : à garder en tête.
+///    utile pour tester sur plusieurs années (identique aux prix réels si le bot trade sur Binance).
 /// </summary>
 public sealed class HistoryService
 {
-    private readonly IMarketDataProvider _kraken;
+    private readonly IMarketDataProvider _md;
     private readonly SqliteRepository _repo;
     private readonly HttpClient _http;
     private readonly ILogger<HistoryService> _log;
 
-    public HistoryService(IMarketDataProvider kraken, SqliteRepository repo, IHttpClientFactory httpFactory, ILogger<HistoryService> log)
+    public HistoryService(IMarketDataProvider md, SqliteRepository repo, IHttpClientFactory httpFactory, ILogger<HistoryService> log)
     {
-        _kraken = kraken;
+        _md = md;
         _repo = repo;
         _http = httpFactory.CreateClient("history");
         _log = log;
@@ -31,23 +31,25 @@ public sealed class HistoryService
     public async Task<object> ImportAsync(string symbol, string source, int days, CancellationToken ct)
     {
         source = source.ToLowerInvariant();
-        if (source == "kraken")
+        if (source == "exchange" || source == _md.Name.ToLowerInvariant() && source != "binance")
         {
-            var h1 = await _kraken.GetCandlesAsync(symbol, Timeframe.H1, null, ct);
-            var h4 = await _kraken.GetCandlesAsync(symbol, Timeframe.H4, null, ct);
+            // Dernières bougies disponibles directement auprès de la plateforme connectée
             var now = DateTime.UtcNow;
-            var c1 = h1.Where(c => c.CloseTime(Timeframe.H1) <= now).ToList();
-            var c4 = h4.Where(c => c.CloseTime(Timeframe.H4) <= now).ToList();
-            await _repo.UpsertCandlesAsync(TradingEngine.SourceName, symbol, Timeframe.H1, c1);
-            await _repo.UpsertCandlesAsync(TradingEngine.SourceName, symbol, Timeframe.H4, c4);
-            return new { symbol, source, candles1h = c1.Count, candles4h = c4.Count };
+            var counts = new Dictionary<string, int>();
+            foreach (var tf in new[] { Timeframe.H1, Timeframe.H4, Timeframe.D1 })
+            {
+                var candles = (await _md.GetCandlesAsync(symbol, tf, null, ct)).Where(c => c.CloseTime(tf) <= now).ToList();
+                await _repo.UpsertCandlesAsync(_md.Name.ToLowerInvariant(), symbol, tf, candles);
+                counts[tf.Label()] = candles.Count;
+            }
+            return new { symbol, source = _md.Name.ToLowerInvariant(), candles = counts };
         }
         if (source == "binance")
         {
             var count = await ImportBinanceAsync(symbol, days, ct);
-            return new { symbol, source, candles1h = count, candles4h = 0 };
+            return new { symbol, source, candles = new Dictionary<string, int> { ["1h"] = count } };
         }
-        throw new ArgumentException("Source inconnue (kraken ou binance).");
+        throw new ArgumentException("Source inconnue (exchange ou binance).");
     }
 
     private async Task<int> ImportBinanceAsync(string symbol, int days, CancellationToken ct)

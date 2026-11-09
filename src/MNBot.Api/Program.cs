@@ -8,6 +8,7 @@ using MNBot.Core.Engine;
 using MNBot.Core.Execution;
 using MNBot.Core.Risk;
 using MNBot.Core.Strategies;
+using MNBot.Exchanges.Binance;
 using MNBot.Exchanges.Kraken;
 
 var paths = AppPaths.Resolve();
@@ -45,6 +46,15 @@ var notifications = cfg.GetSection("Notifications").Get<NotificationSettings>() 
 var kraken = cfg.GetSection("Kraken").Get<KrakenOptions>() ?? new KrakenOptions();
 kraken.ApiKey = Environment.GetEnvironmentVariable("KRAKEN_API_KEY");
 kraken.ApiSecret = Environment.GetEnvironmentVariable("KRAKEN_API_SECRET");
+var binance = cfg.GetSection("Binance").Get<BinanceOptions>() ?? new BinanceOptions();
+binance.ApiKey = Environment.GetEnvironmentVariable("BINANCE_API_KEY");
+binance.ApiSecret = Environment.GetEnvironmentVariable("BINANCE_API_SECRET");
+var useBinance = string.Equals(bot.Exchange, "Binance", StringComparison.OrdinalIgnoreCase);
+if (!useBinance && !string.Equals(bot.Exchange, "Kraken", StringComparison.OrdinalIgnoreCase))
+{
+    Console.Error.WriteLine($"REFUS DE DÉMARRER : plateforme inconnue « {bot.Exchange} » (Binance ou Kraken).");
+    return 5;
+}
 
 var dashboardPassword = Environment.GetEnvironmentVariable("MNBOT_DASHBOARD_PASSWORD");
 var urls = Environment.GetEnvironmentVariable("MNBOT_URLS") ?? server.Urls;
@@ -62,9 +72,11 @@ if (bot.Mode == TradingMode.Live)
         Console.Error.WriteLine("REFUS DE DÉMARRER : Bot:Mode=Live mais MNBOT_LIVE_TRADING_ENABLED n'est pas égal à true. Voir docs/PASSAGE_EN_REEL.md.");
         return 3;
     }
-    if (!kraken.HasCredentials)
+    if (useBinance ? !binance.HasCredentials : !kraken.HasCredentials)
     {
-        Console.Error.WriteLine("REFUS DE DÉMARRER : mode réel demandé mais KRAKEN_API_KEY / KRAKEN_API_SECRET absents.");
+        Console.Error.WriteLine(useBinance
+            ? "REFUS DE DÉMARRER : mode réel demandé mais BINANCE_API_KEY / BINANCE_API_SECRET absents."
+            : "REFUS DE DÉMARRER : mode réel demandé mais KRAKEN_API_KEY / KRAKEN_API_SECRET absents.");
         return 4;
     }
 }
@@ -89,10 +101,17 @@ builder.Services.AddSingleton<ITradingRepository>(sp => sp.GetRequiredService<Sq
 builder.Services.AddHttpClient();
 builder.Services.AddHttpClient("kraken");
 builder.Services.AddSingleton(sp => new KrakenClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("kraken"), kraken));
-builder.Services.AddSingleton<IMarketDataProvider, KrakenMarketDataProvider>();
-builder.Services.AddSingleton<IExecutionVenue>(sp => bot.Mode == TradingMode.Live
-    ? new KrakenExecutionVenue(sp.GetRequiredService<KrakenClient>())
-    : new PaperExecutionVenue(risk.TakerFeeRate, risk.SlippageRate, sp.GetRequiredService<IClock>()));
+builder.Services.AddSingleton(binance);
+builder.Services.AddHttpClient("binance");
+builder.Services.AddSingleton(sp => new BinanceClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("binance"), binance));
+builder.Services.AddSingleton<IMarketDataProvider>(sp => useBinance
+    ? new BinanceMarketDataProvider(sp.GetRequiredService<BinanceClient>())
+    : new KrakenMarketDataProvider(sp.GetRequiredService<KrakenClient>()));
+builder.Services.AddSingleton<IExecutionVenue>(sp => bot.Mode != TradingMode.Live
+    ? new PaperExecutionVenue(risk.TakerFeeRate, risk.SlippageRate, sp.GetRequiredService<IClock>())
+    : useBinance
+        ? new BinanceExecutionVenue(sp.GetRequiredService<BinanceClient>(), risk.TakerFeeRate)
+        : new KrakenExecutionVenue(sp.GetRequiredService<KrakenClient>()));
 builder.Services.AddSingleton(sp => new TradingEngine(
     bot, risk,
     sp.GetRequiredService<IMarketDataProvider>(),

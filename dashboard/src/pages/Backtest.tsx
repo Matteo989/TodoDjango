@@ -42,9 +42,9 @@ export default function Backtest() {
             ) : <div className="muted">Aucun historique. Importez-le avant de lancer un backtest.</div>}
             <div className="row">
               <ActionButton className="btn" onClick={async () => { await api("/data/import", { body: { source: "binance", days: 730 } }); reloadInv(); }}>Importer 2 ans (Binance, 1h)</ActionButton>
-              <ActionButton className="btn ghost" onClick={async () => { await api("/data/import", { body: { source: "kraken" } }); reloadInv(); }}>Importer Kraken (récent)</ActionButton>
+              <ActionButton className="btn ghost" onClick={async () => { await api("/data/import", { body: { source: "binance", days: 3300 } }); reloadInv(); }}>Importer depuis 2017 (plus long)</ActionButton>
             </div>
-            <div className="small muted">Kraken ne fournit que ~30 jours d'historique 1h via son API. L'historique long provient des données publiques Binance (prix très proches, non identiques).</div>
+            <div className="small muted">L'historique provient des données publiques de Binance (mêmes prix que ceux sur lesquels le bot trade). L'import long prend 1 à 3 minutes.</div>
           </div>
         </Card>
         <Card title="2. Lancer un backtest">
@@ -52,7 +52,7 @@ export default function Backtest() {
             <div className="row">
               <label className="stack small" style={{ gap: 4 }}>Source
                 <select value={source} onChange={(e) => setSource(e.target.value)}>
-                  <option value="auto">Automatique</option><option value="binance">Binance (long)</option><option value="kraken">Kraken (récent)</option>
+                  <option value="auto">Automatique</option><option value="binance">Binance</option>
                 </select>
               </label>
               <label className="stack small" style={{ gap: 4 }}>Derniers jours (vide = tout)

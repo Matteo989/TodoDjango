@@ -7,6 +7,10 @@ namespace MNBot.Core.Strategies;
 /// <summary>Paramètres de la stratégie Trend Following + Pullback (modifiables dans config/mnbot.json).</summary>
 public sealed class TrendPullbackParameters
 {
+    /// <summary>Unité de temps des entrées ("1h", "4h", "1d").</summary>
+    public string EntryTimeframe { get; set; } = "1h";
+    /// <summary>Unité de temps de la tendance de fond ("4h", "1d").</summary>
+    public string TrendTimeframe { get; set; } = "4h";
     public int EmaFast { get; set; } = 20;
     public int EmaSlow { get; set; } = 50;
     public int EmaTrend { get; set; } = 200;
@@ -62,8 +66,8 @@ public sealed class TrendPullbackStrategy : IStrategy
     public string Description =>
         "Achat en tendance haussière (4h au-dessus de l'EMA200, EMA20>EMA50 en 1h) après un repli vers l'EMA20, " +
         "quand le RSI repasse au-dessus de 50 avec un volume confirmé. Stop 1,5 ATR, objectif 2R.";
-    public Timeframe EntryTimeframe => Timeframe.H1;
-    public Timeframe TrendTimeframe => Timeframe.H4;
+    public Timeframe EntryTimeframe => TimeframeExtensions.Parse(_p.EntryTimeframe);
+    public Timeframe TrendTimeframe => TimeframeExtensions.Parse(_p.TrendTimeframe);
     public int RequiredEntryCandles => Math.Max(_p.EmaSlow * 3, Math.Max(_p.VolumePeriod, _p.AtrPeriod) + 10);
     public int RequiredTrendCandles => _p.EmaTrend + 50;
     public object Parameters => _p;
@@ -78,9 +82,9 @@ public sealed class TrendPullbackStrategy : IStrategy
         var entry = Tail(ctx.EntryCandles, EntryWindow);
         var trend = Tail(ctx.TrendCandles, TrendWindow);
         if (entry.Count < RequiredEntryCandles)
-            return StrategyEvaluation.NotEnoughData($"Historique 1h insuffisant ({entry.Count}/{RequiredEntryCandles} bougies).");
+            return StrategyEvaluation.NotEnoughData($"Historique {_p.EntryTimeframe} insuffisant ({entry.Count}/{RequiredEntryCandles} bougies).");
         if (trend.Count < RequiredTrendCandles)
-            return StrategyEvaluation.NotEnoughData($"Historique 4h insuffisant ({trend.Count}/{RequiredTrendCandles} bougies).");
+            return StrategyEvaluation.NotEnoughData($"Historique {_p.TrendTimeframe} insuffisant ({trend.Count}/{RequiredTrendCandles} bougies).");
 
         var closes = entry.Select(c => c.Close).ToArray();
         var highs = entry.Select(c => c.High).ToArray();
@@ -175,7 +179,7 @@ public sealed class TrendPullbackStrategy : IStrategy
                 ? $"Volume {F(last.Volume, 4)} vs moyenne {F(avgVol ?? 0, 4)} × {_p.VolumeMultiplier}"
                 : "Filtre volume désactivé"),
             new("Clôture au-dessus de l'EMA20", closeAbove, $"Clôture {F(price)} vs EMA20 {F(e20.Value)}"),
-            new("Bougie clôturée", true, $"Bougie 1h de {last.OpenTime:yyyy-MM-dd HH:mm} UTC"),
+            new("Bougie clôturée", true, $"Bougie {_p.EntryTimeframe} de {last.OpenTime:yyyy-MM-dd HH:mm} UTC"),
         };
 
         var stopDistance = _p.StopAtrMultiplier * a.Value;
