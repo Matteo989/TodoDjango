@@ -112,6 +112,9 @@ public sealed class TradingEngine
             var stored4h = await _repo.GetCandlesAsync(SourceName, symbol, Timeframe.H4, _clock.UtcNow.AddDays(-200));
             _entryCandles[symbol] = stored1h.ToList();
             _trendCandles[symbol] = stored4h.ToList();
+            // Évite de réévaluer (et de rejouer) la même bougie après un redémarrage
+            if (await _repo.GetStateAsync(LastEvalKey(symbol)) is { } last && DateTime.TryParse(last, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastEval))
+                _lastEvaluatedCandle[symbol] = DateTime.SpecifyKind(lastEval, DateTimeKind.Utc);
         }
 
         _open = (await _repo.GetOpenPositionsAsync(_venue.Mode)).ToList();
@@ -157,6 +160,7 @@ public sealed class TradingEngine
     }
 
     public const string LiveConfirmationKey = "live_confirmed_at";
+    private static string LastEvalKey(string symbol) => "last_eval:" + symbol;
 
     // ------------------------------------------------------------------ commandes
 
@@ -366,6 +370,7 @@ public sealed class TradingEngine
             var lastClosed = entry[^1];
             if (_lastEvaluatedCandle.TryGetValue(symbol, out var done) && done >= lastClosed.OpenTime) continue;
             _lastEvaluatedCandle[symbol] = lastClosed.OpenTime;
+            await _repo.SetStateAsync(LastEvalKey(symbol), lastClosed.OpenTime.ToString("O"));
 
             var position = _open.FirstOrDefault(p => p.Symbol == symbol);
             var strategies = position is not null && _strategies.Exists(position.StrategyId)

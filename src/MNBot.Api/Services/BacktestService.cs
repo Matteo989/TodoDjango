@@ -123,11 +123,11 @@ public sealed class BacktestService
 
             var report = new BacktestReport(0, DateTime.UtcNow, source, symbols, tradableFrom, dataTo, split, trainRatio, _settings.SpreadPct, _risk,
                 sw.Elapsed.TotalSeconds, comparisons, notes);
-            var payload = JsonSerializer.Serialize(report, EventHub.JsonOptions);
             var best = comparisons.OrderByDescending(c => c.Validation.Metrics.NetProfit).First();
             var summary = $"{string.Join("+", symbols)} · {source} · {tradableFrom:dd/MM/yy}→{dataTo:dd/MM/yy} · {comparisons.Count} variante(s) · meilleure en validation : {best.StrategyName} ({best.Validation.Metrics.NetProfit:+0.00;-0.00} €)";
-            var id = _repo.InsertBacktest(summary, payload);
+            var id = _repo.InsertBacktest(summary, "{}");
             report = report with { Id = id };
+            _repo.UpdateBacktestPayload(id, JsonSerializer.Serialize(report, EventHub.JsonOptions));
             return report;
         }
         finally { _gate.Release(); }

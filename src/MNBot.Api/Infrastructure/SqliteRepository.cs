@@ -314,6 +314,12 @@ public sealed class SqliteRepository : ITradingRepository
             new { t = T(DateTime.UtcNow), s = summary, p = payload });
     }
 
+    public void UpdateBacktestPayload(long id, string payload)
+    {
+        using var c = Open();
+        c.Execute("UPDATE backtests SET payload=@payload WHERE id=@id", new { id, payload });
+    }
+
     public IReadOnlyList<(long Id, DateTime Time, string Summary)> ListBacktests(int limit)
     {
         using var c = Open();

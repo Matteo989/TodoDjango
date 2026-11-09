@@ -1,0 +1,23 @@
+[Unit]
+Description=MNBot - bot de trading algorithmique
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__ROOT__
+Environment=MNBOT_HOME=__ROOT__
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+ExecStart=__DOTNET__ __ROOT__/publish/MNBot.Api.dll
+Restart=always
+RestartSec=10
+# Durcissement
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=__ROOT__/data __ROOT__/logs
+
+[Install]
+WantedBy=multi-user.target
